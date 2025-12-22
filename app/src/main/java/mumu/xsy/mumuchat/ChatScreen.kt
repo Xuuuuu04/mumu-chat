@@ -41,6 +41,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.mikepenz.markdown.m3.Markdown
+import com.mikepenz.markdown.m3.markdownColor
+import com.mikepenz.markdown.m3.markdownTypography
 import kotlinx.coroutines.launch
 import mumu.xsy.mumuchat.ui.theme.*
 import kotlin.math.cos
@@ -73,7 +76,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
                     availableModels = viewModel.settings.availableModels
                 )
             },
-            containerColor = Color.Transparent // Make Scaffold transparent to show background
+            containerColor = Color.Transparent
         ) { padding ->
             Box(
                 modifier = Modifier
@@ -94,9 +97,18 @@ fun ChatScreen(viewModel: ChatViewModel) {
                 )
                 
                 Box(
-                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 16.dp, vertical = 20.dp)
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 20.dp)
                 ) {
-                    ChatInputArea(viewModel = viewModel, onSend = { viewModel.sendMessage(context, it) })
+                    ChatInputArea(
+                        viewModel = viewModel,
+                        onSend = { 
+                            viewModel.sendMessage(context, it)
+                            viewModel.inputDraft = "" 
+                        }
+                    )
                 }
             }
         }
@@ -115,23 +127,11 @@ fun MuMuLogo(size: Dp, isAnimating: Boolean = false) {
     Canvas(modifier = Modifier.size(size).graphicsLayer { if (isAnimating) { scaleX = pulse; scaleY = pulse } }) {
         val center = size.toPx() / 2
         val radius = size.toPx() / 2
-        
-        // 1. Outer Glow (Soft)
-        drawCircle(
-            brush = Brush.radialGradient(
-                0.0f to BrandPrimary.copy(alpha = 0.4f),
-                0.6f to BrandSecondary.copy(alpha = 0.1f),
-                1.0f to Color.Transparent,
-                center = Offset(center, center),
-                radius = radius
-            ),
-            radius = radius
-        )
-
+        drawCircle(brush = Brush.radialGradient(0.0f to BrandPrimary.copy(alpha = 0.4f), 0.6f to BrandSecondary.copy(alpha = 0.1f), 1.0f to Color.Transparent, center = Offset(center, center), radius = radius), radius = radius)
         val path = Path().apply {
             val sides = 6
             val angleStep = (Math.PI * 2 / sides)
-            val coreRadius = radius * 0.65f // Slightly smaller for better proportions
+            val coreRadius = radius * 0.65f
             for (i in 0 until sides) {
                 val angle = i * angleStep - (Math.PI / 2)
                 val x = center + coreRadius * cos(angle).toFloat()
@@ -140,24 +140,8 @@ fun MuMuLogo(size: Dp, isAnimating: Boolean = false) {
             }
             close()
         }
-
-        drawPath(
-            path = path,
-            brush = Brush.linearGradient(
-                listOf(LogoGradientStart, LogoGradientMid, LogoGradientEnd),
-                start = Offset(0f, 0f),
-                end = Offset(size.toPx(), size.toPx())
-            ),
-            style = Fill
-        )
-        
-        // 3. Highlight Sparkle
-        drawCircle(
-            color = Color.White.copy(alpha = 0.2f),
-            radius = radius * 0.2f,
-            center = Offset(center - radius * 0.2f, center - radius * 0.2f)
-        )
-        
+        drawPath(path = path, brush = Brush.linearGradient(listOf(LogoGradientStart, LogoGradientMid, LogoGradientEnd), start = Offset(0f, 0f), end = Offset(size.toPx(), size.toPx())), style = Fill)
+        drawCircle(color = Color.White.copy(alpha = 0.2f), radius = radius * 0.2f, center = Offset(center - radius * 0.2f, center - radius * 0.2f))
         rotate(degrees = rotation, pivot = Offset(center, center)) {
              drawOval(color = Color.White.copy(0.6f), topLeft = Offset(center - radius * 0.4f, center - radius * 0.15f), size = androidx.compose.ui.geometry.Size(radius * 0.8f, radius * 0.3f), style = androidx.compose.ui.graphics.drawscope.Stroke(4f))
              drawOval(color = Color.White.copy(0.6f), topLeft = Offset(center - radius * 0.15f, center - radius * 0.4f), size = androidx.compose.ui.geometry.Size(radius * 0.3f, radius * 0.8f), style = androidx.compose.ui.graphics.drawscope.Stroke(4f))
@@ -171,7 +155,7 @@ fun ChatTopBar(selectedModel: String, availableModels: List<String>, onMenuClick
     var expanded by remember { mutableStateOf(false) }
     CenterAlignedTopAppBar(
         title = {
-            Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(0.5f), shape = CircleShape, modifier = Modifier.clip(CircleShape).clickable { expanded = true }) {
+            Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = CircleShape, modifier = Modifier.clip(CircleShape).clickable { expanded = true }) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
                     Text(text = selectedModel.split("/").last(), style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
                     Spacer(Modifier.width(4.dp))
@@ -203,14 +187,14 @@ fun SidebarContent(viewModel: ChatViewModel, onSettingsClick: () -> Unit) {
                 }
             }
             Spacer(Modifier.height(32.dp))
-            Button(onClick = { viewModel.createNewChat() }, modifier = Modifier.fillMaxWidth().height(52.dp).shadow(8.dp, RoundedCornerShape(26.dp), spotColor = BrandPrimary.copy(0.2f)), shape = RoundedCornerShape(26.dp)) {
+            Button(onClick = { viewModel.createNewChat() }, modifier = Modifier.fillMaxWidth().height(52.dp).shadow(8.dp, RoundedCornerShape(26.dp), spotColor = BrandPrimary.copy(alpha = 0.2f)), shape = RoundedCornerShape(26.dp)) {
                 Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text("开启新对话", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
             }
             Spacer(Modifier.height(32.dp))
             LazyColumn(modifier = Modifier.weight(1f)) {
                 itemsIndexed(viewModel.sessions) { _, session ->
                     val isSelected = session.id == viewModel.currentSessionId
-                    NavigationDrawerItem(label = { Text(session.title, maxLines = 1) }, selected = isSelected, onClick = { viewModel.selectSession(session.id) }, icon = { Icon(Icons.Default.Email, null) }, shape = RoundedCornerShape(12.dp))
+                    NavigationDrawerItem(label = { Text(session.title, maxLines = 1, fontWeight = if(isSelected) FontWeight.Bold else FontWeight.Normal) }, selected = isSelected, onClick = { viewModel.selectSession(session.id) }, icon = { Icon(Icons.Default.Email, null) }, shape = RoundedCornerShape(12.dp))
                 }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
@@ -261,12 +245,15 @@ fun UserBubble(message: ChatMessage) {
 @Composable
 fun AiBubble(message: ChatMessage) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        if (message.steps.isNotEmpty()) {
-            TaskFlowContainer(steps = message.steps)
-            Spacer(Modifier.height(12.dp))
-        }
+        if (message.steps.isNotEmpty()) { TaskFlowContainer(steps = message.steps); Spacer(Modifier.height(12.dp)) }
         if (message.content.isNotBlank()) {
-            SelectionContainer { Text(text = message.content, style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 28.sp, fontFamily = FontFamily.Serif)) }
+            SelectionContainer {
+                Markdown(
+                    content = message.content,
+                    colors = markdownColor(text = MaterialTheme.colorScheme.onBackground),
+                    typography = markdownTypography(text = MaterialTheme.typography.bodyLarge.copy(lineHeight = 28.sp))
+                )
+            }
         }
     }
 }
@@ -274,46 +261,28 @@ fun AiBubble(message: ChatMessage) {
 @Composable
 fun TaskFlowContainer(steps: List<ChatStep>) {
     var allExpanded by remember { mutableStateOf(true) }
-    
-    Column(modifier = Modifier.fillMaxWidth().border(1.dp, BrandPrimary.copy(0.1f), RoundedCornerShape(12.dp)).background(if(isSystemInDarkTheme()) ThinkingProcessBgDark else ThinkingProcessBgLight, RoundedCornerShape(12.dp))) {
+    Column(modifier = Modifier.fillMaxWidth().border(1.dp, BrandPrimary.copy(alpha = 0.1f), RoundedCornerShape(12.dp)).background(if(isSystemInDarkTheme()) ThinkingProcessBgDark else ThinkingProcessBgLight, RoundedCornerShape(12.dp))) {
         Row(modifier = Modifier.fillMaxWidth().clickable { allExpanded = !allExpanded }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Info, null, tint = BrandPrimary, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("推理链与执行历史", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = BrandPrimary)
-            Spacer(Modifier.weight(1f))
-            Text("${steps.size} 步", style = MaterialTheme.typography.labelSmall, color = BrandPrimary.copy(0.7f))
+            Spacer(Modifier.width(8.dp)); Text("推理链与执行历史", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = BrandPrimary)
+            Spacer(Modifier.weight(1f)); Text("${steps.size} 步", style = MaterialTheme.typography.labelSmall, color = BrandPrimary.copy(alpha = 0.7f))
             Icon(if(allExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null, modifier = Modifier.size(16.dp), tint = BrandPrimary)
         }
-        
-        AnimatedVisibility(visible = allExpanded) {
-            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                steps.forEach { step -> StepItem(step) }
-            }
-        }
+        AnimatedVisibility(visible = allExpanded) { Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) { steps.forEach { StepItem(it) } } }
     }
 }
 
 @Composable
 fun StepItem(step: ChatStep) {
     var expanded by remember { mutableStateOf(false) }
-    val isThinking = step.type == StepType.THINKING
-    
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Row(modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            val infinite = rememberInfiniteTransition()
-            val alpha by if(!step.isFinished) infinite.animateFloat(0.4f, 1f, infiniteRepeatable(tween(800), RepeatMode.Reverse)) else remember { mutableFloatStateOf(1f) }
-            
-            Icon(if(isThinking) Icons.Default.Face else Icons.Default.Build, null, tint = if(isThinking) BrandSecondary else ThinkingAccent, modifier = Modifier.size(16.dp).graphicsLayer { this.alpha = alpha })
-            Spacer(Modifier.width(8.dp))
-            Text(if(isThinking) "思考内容" else "调用工具: ${step.toolName}", style = MaterialTheme.typography.labelSmall, color = if(isThinking) BrandSecondary else ThinkingAccent)
-            Spacer(Modifier.weight(1f))
-            if(step.content.isNotBlank()) Icon(if(expanded) Icons.Default.KeyboardArrowUp else Icons.Default.Add, null, modifier = Modifier.size(12.dp), tint = Color.Gray)
+            val alpha by if(!step.isFinished) rememberInfiniteTransition().animateFloat(0.4f, 1f, infiniteRepeatable(tween(800), RepeatMode.Reverse)) else remember { mutableFloatStateOf(1f) }
+            Icon(if(step.type == StepType.THINKING) Icons.Default.Face else Icons.Default.Build, null, tint = if(step.type == StepType.THINKING) BrandSecondary else ThinkingAccent, modifier = Modifier.size(16.dp).graphicsLayer { this.alpha = alpha })
+            Spacer(Modifier.width(8.dp)); Text(if(step.type == StepType.THINKING) "思考内容" else "调用工具: ${step.toolName}", style = MaterialTheme.typography.labelSmall, color = if(step.type == StepType.THINKING) BrandSecondary else ThinkingAccent)
+            Spacer(Modifier.weight(1f)); if(step.content.isNotBlank()) Icon(if(expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null, modifier = Modifier.size(12.dp), tint = Color.Gray)
         }
-        AnimatedVisibility(visible = expanded && step.content.isNotBlank()) {
-            SelectionContainer {
-                Text(text = step.content, style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.7f)), modifier = Modifier.padding(start = 24.dp, bottom = 8.dp))
-            }
-        }
+        AnimatedVisibility(visible = expanded && step.content.isNotBlank()) { SelectionContainer { Text(text = step.content, style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.7f)), modifier = Modifier.padding(start = 24.dp, bottom = 8.dp)) } }
     }
 }
 
@@ -350,8 +319,8 @@ fun SettingsDialog(viewModel: ChatViewModel, onDismiss: () -> Unit) {
     var selectedModels by remember { mutableStateOf(viewModel.settings.availableModels.toSet()) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("高级设置") }, text = {
         Column(modifier = Modifier.fillMaxWidth().heightIn(max = 500.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            OutlinedTextField(value = url, onValueChange = { url = it }, label = { Text("硅基流动 Base URL") }, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = key, onValueChange = { key = it }, label = { Text("硅基流动 API Key") }, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = url, onValueChange = { url = it }, label = { Text("Base URL") }, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = key, onValueChange = { key = it }, label = { Text("API Key") }, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth())
             OutlinedTextField(value = exaKey, onValueChange = { exaKey = it }, label = { Text("Exa Search API Key") }, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth())
             HorizontalDivider()
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -373,15 +342,13 @@ fun SettingsDialog(viewModel: ChatViewModel, onDismiss: () -> Unit) {
 fun ProfileDialog(viewModel: ChatViewModel, onDismiss: () -> Unit) {
     var prompt by remember { mutableStateOf(viewModel.settings.systemPrompt) }
     var newMemory by remember { mutableStateOf("") }
-    val memories = viewModel.settings.memories
     AlertDialog(onDismissRequest = onDismiss, title = { Text("AI 个性化与记忆") }, text = {
         Column(modifier = Modifier.fillMaxWidth().heightIn(max = 500.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("全局系统人设", style = MaterialTheme.typography.labelLarge, color = BrandPrimary)
             OutlinedTextField(value = prompt, onValueChange = { prompt = it }, modifier = Modifier.fillMaxWidth(), minLines = 3, shape = RoundedCornerShape(12.dp))
-            HorizontalDivider()
-            Text("长期记忆", style = MaterialTheme.typography.labelLarge, color = BrandPrimary)
-            if (memories.isEmpty()) Text("暂无记忆", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
-            memories.forEachIndexed { i, m -> MemoryItem(text = m, onDelete = { viewModel.deleteMemory(i) }, onUpdate = { viewModel.updateMemory(i, it) }) }
+            HorizontalDivider(); Text("长期记忆", style = MaterialTheme.typography.labelLarge, color = BrandPrimary)
+            if (viewModel.settings.memories.isEmpty()) Text("暂无记忆", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+            viewModel.settings.memories.forEachIndexed { i, m -> MemoryItem(text = m, onDelete = { viewModel.deleteMemory(i) }, onUpdate = { viewModel.updateMemory(i, it) }) }
             OutlinedTextField(value = newMemory, onValueChange = { newMemory = it }, placeholder = { Text("手动添加...") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), trailingIcon = { IconButton(onClick = { viewModel.addMemory(newMemory); newMemory = "" }, enabled = newMemory.isNotBlank()) { Icon(Icons.Default.AddCircle, null, tint = if(newMemory.isNotBlank()) BrandPrimary else Color.Gray) } })
         }
     }, confirmButton = { Button(onClick = { viewModel.updateSettings(viewModel.settings.copy(systemPrompt = prompt)); onDismiss() }) { Text("完成") } })
@@ -391,7 +358,7 @@ fun ProfileDialog(viewModel: ChatViewModel, onDismiss: () -> Unit) {
 fun MemoryItem(text: String, onDelete: () -> Unit, onUpdate: (String) -> Unit) {
     var editing by remember { mutableStateOf(false) }
     var editText by remember { mutableStateOf(text) }
-    Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(0.5f), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(8.dp)) {
             if (editing) {
                 BasicTextField(value = editText, onValueChange = { editText = it }, modifier = Modifier.fillMaxWidth().padding(8.dp))
@@ -401,9 +368,9 @@ fun MemoryItem(text: String, onDelete: () -> Unit, onUpdate: (String) -> Unit) {
                 }
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = "• $text", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f).padding(8.dp))
+                    Text(text = "• $text", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f).padding(8.dp) )
                     IconButton(onClick = { editing = true }) { Icon(Icons.Default.Edit, null, modifier = Modifier.size(16.dp), tint = BrandPrimary) }
-                    IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, null, modifier = Modifier.size(16.dp), tint = Color.Red.copy(0.7f)) }
+                    IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, null, modifier = Modifier.size(16.dp), tint = Color.Red.copy(alpha = 0.7f)) }
                 }
             }
         }

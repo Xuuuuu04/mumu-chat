@@ -10,8 +10,10 @@ activityCompose = "1.12.2"
 composeBom = "2024.09.00"
 langchain4j = "0.36.2"
 slf4j = "1.7.36"
+mikepenzMarkdown = "0.29.0"
 
 [libraries]
+markdown-renderer-m3 = { group = "com.mikepenz", name = "multiplatform-markdown-renderer-m3", version.ref = "mikepenzMarkdown" }
 slf4j-android = { group = "org.slf4j", name = "slf4j-android", version.ref = "slf4j" }
 langchain4j-open-ai = { group = "dev.langchain4j", name = "langchain4j-open-ai", version.ref = "langchain4j" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
