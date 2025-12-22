@@ -1,12 +1,22 @@
-<h1 align="center">MuMu Chat - Super Agent</h1>
+<div align="center">
+  <h1>MuMu Chat - Super Agent</h1>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
-  <img src="https://img.shields.io/badge/platform-Android-blue" alt="Platform">
-  <img src="https://img.shields.io/badge/language-Kotlin-purple" alt="Language">
-</p>
+  <p>
+    <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
+    <img src="https://img.shields.io/badge/platform-Android-blue" alt="Platform">
+    <img src="https://img.shields.io/badge/language-Kotlin-purple" alt="Language">
+  </p>
+  
+  <p>
+    <strong>
+      <a href="MuMuChat-v2.0-beta.apk">📥 Download APK (v2.0 Beta)</a>
+    </strong>
+  </p>
 
-[中文](#中文) | [English](#english) | [日本語](#日本語)
+  <p>
+    <a href="#中文">中文</a> | <a href="#english">English</a> | <a href="#日本語">日本語</a>
+  </p>
+</div>
 
 ---
 
