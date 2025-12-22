@@ -106,6 +106,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         saveSettings(settings.copy(availableModels = updatedModels))
     }
 
+    fun addModels(modelNames: List<String>) {
+        val updatedModels = (settings.availableModels + modelNames).distinct().sorted()
+        saveSettings(settings.copy(availableModels = updatedModels))
+    }
+
     fun removeModel(modelName: String) {
         val updatedModels = settings.availableModels - modelName
         saveSettings(settings.copy(availableModels = updatedModels))
@@ -122,8 +127,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     if (response.isSuccessful) {
                         val ids = gson.fromJson(response.body?.string(), JsonObject::class.java).getAsJsonArray("data").map { it.asJsonObject.get("id").asString }
                         launch(Dispatchers.Main) { 
-                            val mergedModels = (settings.availableModels + ids).distinct().sorted()
-                            saveSettings(settings.copy(availableModels = mergedModels, fetchedModels = ids)) 
+                            saveSettings(settings.copy(fetchedModels = ids.sorted())) 
                         }
                     }
                 }

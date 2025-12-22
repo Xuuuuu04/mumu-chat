@@ -645,6 +645,9 @@ fun SettingsDialog(viewModel: ChatViewModel, onDismiss: () -> Unit) {
     var key by remember { mutableStateOf(viewModel.settings.apiKey) }
     var exaKey by remember { mutableStateOf(viewModel.settings.exaApiKey) }
     var newModelName by remember { mutableStateOf("") }
+    
+    // State for selected new models
+    var selectedNewModels by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     AlertDialog(onDismissRequest = onDismiss, title = { Text("模型与Key配置") }, text = {
         Column(modifier = Modifier.fillMaxWidth().heightIn(max = 500.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -678,6 +681,41 @@ fun SettingsDialog(viewModel: ChatViewModel, onDismiss: () -> Unit) {
                     Text(modelId, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                     IconButton(onClick = { viewModel.removeModel(modelId) }, modifier = Modifier.size(24.dp)) {
                         Icon(Icons.Default.Delete, null, tint = Color.Red.copy(0.6f), modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+
+            val newModels = viewModel.settings.fetchedModels.filter { !viewModel.settings.availableModels.contains(it) }
+            if (newModels.isNotEmpty()) {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("发现新模型 (${newModels.size})", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.weight(1f))
+                    if (selectedNewModels.isNotEmpty()) {
+                        TextButton(onClick = {
+                            viewModel.addModels(selectedNewModels.toList())
+                            selectedNewModels = emptySet()
+                        }) {
+                            Text("添加选中 (${selectedNewModels.size})")
+                        }
+                    }
+                }
+
+                newModels.forEach { modelId ->
+                    val isChecked = selectedNewModels.contains(modelId)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { 
+                            selectedNewModels = if (isChecked) selectedNewModels - modelId else selectedNewModels + modelId 
+                        }.padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = isChecked,
+                            onCheckedChange = { 
+                                selectedNewModels = if (it) selectedNewModels + modelId else selectedNewModels - modelId 
+                            }
+                        )
+                        Text(modelId, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp))
                     }
                 }
             }
