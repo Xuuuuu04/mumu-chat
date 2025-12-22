@@ -6,70 +6,7 @@
   <img src="https://img.shields.io/badge/language-Kotlin-purple" alt="Language">
 </p>
 
-[English](#english) | [中文](#中文) | [日本語](#日本語)
-
----
-
-<a name="english"></a>
-## English
-
-**MuMu Chat** is a powerful, locally-running Android AI chat application built with **Jetpack Compose**. It is designed to act as a "Super Agent," supporting ReAct-style reasoning, multi-modal capabilities (text, image), and various tool integrations like web search, memory management, and code execution.
-
-### ✨ Features
-
-- **ReAct Reasoning Engine**: Not just a chatbot, MuMu decomposes complex tasks, reasons, acts, observes, and iterates to solve problems.
-- **Rich Tool Ecosystem**:
-    - **Web Search**: Real-time information access via **Exa.ai**.
-    - **Memory**: Stores and retrieves long-term user facts for personalized interactions.
-    - **Image Generation**: Creates images from text descriptions (Text-to-Image).
-    - **Web Browsing**: Reads and parses full web pages.
-    - **News**: Fetches trending topics from various platforms.
-    - **Calculator**: Executes JavaScript code for precise math.
-- **Modern UI/UX**:
-    - **Markdown & HTML**: Renders rich text and even previews HTML/JS code blocks directly in the chat.
-    - **Task Visualization**: Transparently shows the agent's "thinking" process and tool usage.
-    - **Chat Management**: Organize conversations into custom folders.
-- **Customization**:
-    - **Model Agnostic**: Compatible with OpenAI-compatible APIs (SiliconFlow, DeepSeek, etc.).
-    - **Model Management**: Fetch, add, and manage your preferred LLMs.
-
-### 🚀 Getting Started
-
-#### Prerequisites
-- Android Studio Koala or newer.
-- JDK 17+.
-- **API Key**: An OpenAI-compatible API key (e.g., from SiliconFlow).
-- **Exa API Key**: Required for web search features.
-
-#### Installation
-1.  **Clone the repository**:
-    ```bash
-    git clone git@gitcode.com:mumu_xsy/mumuchat.git
-    ```
-2.  Open the project in Android Studio.
-3.  Sync Gradle and run on your device/emulator.
-
-#### Configuration
-1.  Launch the app and open the sidebar.
-2.  Go to **"Model & Key Configuration"**.
-3.  Enter your **Base URL** (e.g., `https://api.siliconflow.cn/v1`).
-4.  Enter your **API Key** and **Exa Search Key**.
-5.  Fetch or manually add the models you wish to use.
-
-### 🛠️ Architecture
-- **MVVM**: Separation of concerns with `ChatViewModel` and Jetpack Compose UI.
-- **Tech Stack**: Kotlin, Jetpack Compose, OkHttp (SSE), Coil, Gson.
-
-### 🤝 Contributing
-Contributions are welcome! This project is open for secondary development.
-1.  Fork the Project
-2.  Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3.  Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4.  Push to the Branch (`git push origin feature/AmazingFeature`)
-5.  Open a Pull Request
-
-### 📄 License
-Distributed under the MIT License. See `LICENSE` for more information.
+[中文](#中文) | [English](#english) | [日本語](#日本語)
 
 ---
 
@@ -133,6 +70,69 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ### 📄 开源协议
 本项目基于 MIT 协议开源。详情请参阅 `LICENSE` 文件。
+
+---
+
+<a name="english"></a>
+## English
+
+**MuMu Chat** is a powerful, locally-running Android AI chat application built with **Jetpack Compose**. It is designed to act as a "Super Agent," supporting ReAct-style reasoning, multi-modal capabilities (text, image), and various tool integrations like web search, memory management, and code execution.
+
+### ✨ Features
+
+- **ReAct Reasoning Engine**: Not just a chatbot, MuMu decomposes complex tasks, reasons, acts, observes, and iterates to solve problems.
+- **Rich Tool Ecosystem**:
+    - **Web Search**: Real-time information access via **Exa.ai**.
+    - **Memory**: Stores and retrieves long-term user facts for personalized interactions.
+    - **Image Generation**: Creates images from text descriptions (Text-to-Image).
+    - **Web Browsing**: Reads and parses full web pages.
+    - **News**: Fetches trending topics from various platforms.
+    - **Calculator**: Executes JavaScript code for precise math.
+- **Modern UI/UX**:
+    - **Markdown & HTML**: Renders rich text and even previews HTML/JS code blocks directly in the chat.
+    - **Task Visualization**: Transparently shows the agent's "thinking" process and tool usage.
+    - **Chat Management**: Organize conversations into custom folders.
+- **Customization**:
+    - **Model Agnostic**: Compatible with OpenAI-compatible APIs (SiliconFlow, DeepSeek, etc.).
+    - **Model Management**: Fetch, add, and manage your preferred LLMs.
+
+### 🚀 Getting Started
+
+#### Prerequisites
+- Android Studio Koala or newer.
+- JDK 17+.
+- **API Key**: An OpenAI-compatible API key (e.g., from SiliconFlow).
+- **Exa API Key**: Required for web search features.
+
+#### Installation
+1.  **Clone the repository**:
+    ```bash
+    git clone git@gitcode.com:mumu_xsy/mumuchat.git
+    ```
+2.  Open the project in Android Studio.
+3.  Sync Gradle and run on your device/emulator.
+
+#### Configuration
+1.  Launch the app and open the sidebar.
+2.  Go to **"Model & Key Configuration"**.
+3.  Enter your **Base URL** (e.g., `https://api.siliconflow.cn/v1`).
+4.  Enter your **API Key** and **Exa Search Key**.
+5.  Fetch or manually add the models you wish to use.
+
+### 🛠️ Architecture
+- **MVVM**: Separation of concerns with `ChatViewModel` and Jetpack Compose UI.
+- **Tech Stack**: Kotlin, Jetpack Compose, OkHttp (SSE), Coil, Gson.
+
+### 🤝 Contributing
+Contributions are welcome! This project is open for secondary development.
+1.  Fork the Project
+2.  Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3.  Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4.  Push to the Branch (`git push origin feature/AmazingFeature`)
+5.  Open a Pull Request
+
+### 📄 License
+Distributed under the MIT License. See `LICENSE` for more information.
 
 ---
 
