@@ -34,8 +34,8 @@ data class ChatSession(
 
 data class AppSettings(
     val baseUrl: String = "https://api.siliconflow.cn/v1",
-    val apiKey: String = "sk-kjfvtxdspxngnsgsmeciaycwitfpuyvnybokuivrliquzbbt",
-    val exaApiKey: String = "6112f5dc-bc6e-4632-aee0-b9d62afa6b41",
+    val apiKey: String = "",
+    val exaApiKey: String = "",
     val selectedModel: String = "MiniMaxAI/MiniMax-M2",
     val availableModels: List<String> = listOf(
         "deepseek-ai/DeepSeek-V3.2",
