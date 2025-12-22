@@ -1,4 +1,4 @@
-# MuMu Chat - Super Agent
+<h1 align="center">MuMu Chat - Super Agent</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
