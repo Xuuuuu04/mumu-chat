@@ -25,7 +25,12 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
 import okhttp3.sse.EventSources
+import org.jsoup.Jsoup
+import org.mozilla.javascript.Context as RhinoContext
+import org.mozilla.javascript.Scriptable
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -85,14 +90,41 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         contains("vl") || contains("gemini") || contains("vision") || contains("omni") || contains("glm") || contains("step") || contains("ocr")
     }
 
+    fun createFolder(name: String) {
+        if (name.isBlank() || settings.folders.contains(name)) return
+        saveSettings(settings.copy(folders = settings.folders + name))
+    }
+
+    fun deleteFolder(name: String) {
+        saveSettings(settings.copy(folders = settings.folders - name))
+        sessions.forEach { if (it.folder == name) it.copy(folder = null) }
+    }
+
+    fun addModel(modelName: String) {
+        if (modelName.isBlank() || settings.availableModels.contains(modelName)) return
+        val updatedModels = (settings.availableModels + modelName).sorted()
+        saveSettings(settings.copy(availableModels = updatedModels))
+    }
+
+    fun removeModel(modelName: String) {
+        val updatedModels = settings.availableModels - modelName
+        saveSettings(settings.copy(availableModels = updatedModels))
+        if (settings.selectedModel == modelName) {
+            saveSettings(settings.copy(selectedModel = updatedModels.firstOrNull() ?: ""))
+        }
+    }
+
     fun fetchAvailableModels() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val request = Request.Builder().url("${settings.baseUrl}/models").header("Authorization", "Bearer ${settings.apiKey}").get().build()
                 client.newCall(request).execute().use { response ->
                     if (response.isSuccessful) {
-                        val ids = gson.fromJson(response.body?.string(), JsonObject::class.java).getAsJsonArray("data").map { it.asJsonObject.get("id").asString }.sorted()
-                        launch(Dispatchers.Main) { saveSettings(settings.copy(fetchedModels = ids)) }
+                        val ids = gson.fromJson(response.body?.string(), JsonObject::class.java).getAsJsonArray("data").map { it.asJsonObject.get("id").asString }
+                        launch(Dispatchers.Main) { 
+                            val mergedModels = (settings.availableModels + ids).distinct().sorted()
+                            saveSettings(settings.copy(availableModels = mergedModels, fetchedModels = ids)) 
+                        }
                     }
                 }
             } catch (e: Exception) {}
@@ -100,8 +132,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectSession(id: String) { currentSessionId = id }
-    fun createNewChat() { sessions.add(0, ChatSession(title = "新对话 ${sessions.size + 1}")).also { currentSessionId = sessions[0].id } }
+    fun createNewChat() { sessions.add(0, ChatSession(title = "新对话")).also { currentSessionId = sessions[0].id } }
     fun stopGeneration() { currentEventSource?.cancel(); currentGenerationJob?.cancel() }
+
+    fun renameSession(sessionId: String, newTitle: String) {
+        val index = sessions.indexOfFirst { it.id == sessionId }
+        if (index != -1) sessions[index] = sessions[index].copy(title = newTitle)
+    }
+
+    fun deleteSession(sessionId: String) {
+        sessions.removeAll { it.id == sessionId }
+        if (currentSessionId == sessionId) currentSessionId = sessions.firstOrNull()?.id ?: createNewChat().let { sessions[0].id }
+    }
+
+    fun moveSessionToFolder(sessionId: String, folderName: String?) {
+        val index = sessions.indexOfFirst { it.id == sessionId }
+        if (index != -1) sessions[index] = sessions[index].copy(folder = folderName)
+    }
 
     fun editMessage(index: Int) {
         val sessionId = currentSessionId ?: return
@@ -118,21 +165,43 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val sIdx = sessions.indexOfFirst { it.id == sessionId }
         if (sIdx == -1) return
 
-        val imageBase64 = selectedImageUri?.let { uriToContent(context, it) }
-        val finalImageUrl = imageBase64?.let { "data:image/jpeg;base64,$it" }
+        viewModelScope.launch(Dispatchers.IO) {
+            val imagePath = selectedImageUri?.let { saveImageToInternalStorage(context, it) }
+            val finalImageUrl = imagePath?.let { "file://$it" }
+            val currentInput = text
 
-        val userMsg = ChatMessage(text, MessageRole.USER, imageUrl = finalImageUrl)
-        sessions[sIdx] = sessions[sIdx].copy(
-            messages = sessions[sIdx].messages + userMsg,
-            title = if (sessions[sIdx].messages.isEmpty()) text.take(15) else sessions[sIdx].title
-        )
+            withContext(Dispatchers.Main) {
+                val userMsg = ChatMessage(currentInput, MessageRole.USER, imageUrl = finalImageUrl)
+                val aiMsgPlaceholder = ChatMessage("", MessageRole.ASSISTANT, steps = emptyList())
+                
+                val isFirst = sessions[sIdx].messages.isEmpty()
+                sessions[sIdx] = sessions[sIdx].copy(messages = sessions[sIdx].messages + userMsg + aiMsgPlaceholder)
+                val aiMsgIndex = sessions[sIdx].messages.size - 1
+                
+                selectedImageUri = null
+                executeMultiStepTurn(sIdx, aiMsgIndex, mutableListOf())
+                if (isFirst) autoRenameSession(sIdx, currentInput)
+            }
+        }
+    }
 
-        val aiMsgPlaceholder = ChatMessage("", MessageRole.ASSISTANT, steps = emptyList())
-        sessions[sIdx] = sessions[sIdx].copy(messages = sessions[sIdx].messages + aiMsgPlaceholder)
-        val aiMsgIndex = sessions[sIdx].messages.size - 1
-
-        selectedImageUri = null
-        executeMultiStepTurn(sIdx, aiMsgIndex, mutableListOf())
+    private fun autoRenameSession(sIdx: Int, userFirstMsg: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val prompt = "总结一个2-5个字的对话标题，不要标点符号。用户说: \"$userFirstMsg\""
+                val requestBody = JsonObject().apply {
+                    addProperty("model", "deepseek-ai/DeepSeek-V3")
+                    add("messages", JsonArray().apply { add(JsonObject().apply { addProperty("role", "user"); addProperty("content", prompt) }) })
+                }
+                val request = Request.Builder().url("${settings.baseUrl}/chat/completions").header("Authorization", "Bearer ${settings.apiKey}").post(requestBody.toString().toRequestBody("application/json".toMediaType())).build()
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val title = gson.fromJson(response.body?.string(), JsonObject::class.java).getAsJsonArray("choices").get(0).asJsonObject.getAsJsonObject("message").get("content").asString.trim().replace("\"", "")
+                        launch(Dispatchers.Main) { renameSession(sessions[sIdx].id, title) }
+                    }
+                }
+            } catch (e: Exception) {}
+        }
     }
 
     private fun executeMultiStepTurn(sIdx: Int, aiMsgIndex: Int, historyOfToolCalls: MutableList<Pair<JsonObject, String>>) {
@@ -151,8 +220,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 override fun onEvent(eventSource: EventSource, id: String?, type: String?, data: String) {
                     if (data == "[DONE]") {
                         if (activeToolCalls.isNotEmpty()) {
-                            val calls = activeToolCalls.values.toList()
-                            processAndContinue(sIdx, aiMsgIndex, calls, historyOfToolCalls)
+                            processAndContinue(sIdx, aiMsgIndex, activeToolCalls.values.toList(), historyOfToolCalls)
                         } else { finalizeMessage(sIdx, aiMsgIndex) }
                         return
                     }
@@ -200,7 +268,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val messages = JsonArray().apply {
             val currentTime = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(Date())
             val systemPrompt = settings.systemPrompt.replace("{CURRENT_TIME}", currentTime).let { base ->
-                if (settings.memories.isNotEmpty()) base + "\n\n用户长期记忆：\n" + settings.memories.joinToString("\n") { "- $it" } else base
+                if (settings.memories.isNotEmpty()) base + "\n\n用户记忆：\n" + settings.memories.joinToString("\n") { "- $it" } else base
             }
             add(JsonObject().apply { addProperty("role", "system"); addProperty("content", systemPrompt) })
             
@@ -209,9 +277,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 add(JsonObject().apply {
                     addProperty("role", if(msg.role == MessageRole.USER) "user" else "assistant")
                     if (msg.role == MessageRole.USER && msg.imageUrl != null) {
+                        val finalUrl = if (msg.imageUrl.startsWith("file://")) {
+                            encodeFileToBase64(msg.imageUrl.substring(7)) ?: msg.imageUrl
+                        } else msg.imageUrl
+
                         val contentArr = JsonArray().apply {
                             add(JsonObject().apply { addProperty("type", "text"); addProperty("text", msg.content) })
-                            add(JsonObject().apply { addProperty("type", "image_url"); add("image_url", JsonObject().apply { addProperty("url", msg.imageUrl) }) })
+                            add(JsonObject().apply { addProperty("type", "image_url"); add("image_url", JsonObject().apply { addProperty("url", finalUrl) }) })
                         }
                         add("content", contentArr)
                     } else { addProperty("content", msg.content) }
@@ -219,24 +291,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             currentTurnToolHistory.forEach { (call, result) ->
-                add(JsonObject().apply {
-                    addProperty("role", "assistant")
-                    add("tool_calls", JsonArray().apply { add(call) })
-                })
-                add(JsonObject().apply {
-                    addProperty("role", "tool")
-                    addProperty("tool_call_id", call.get("id").asString)
-                    addProperty("content", result)
-                })
+                add(JsonObject().apply { addProperty("role", "assistant"); add("tool_calls", JsonArray().apply { add(call) }) })
+                add(JsonObject().apply { addProperty("role", "tool"); addProperty("tool_call_id", call.get("id").asString); addProperty("content", result) })
             }
         }
 
         return JsonObject().apply {
             addProperty("model", settings.selectedModel)
-            add("messages", messages)
-            add("tools", getToolsDefinition())
-            addProperty("tool_choice", "auto")
-            addProperty("stream", true)
+            add("messages", messages); add("tools", getToolsDefinition()); addProperty("tool_choice", "auto"); addProperty("stream", true)
         }
     }
 
@@ -244,77 +306,74 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             calls.forEach { call ->
                 val func = call.getAsJsonObject("function")
-                val name = func.get("name").asString
-                val args = func.get("arguments").asString
-                val result = withContext(Dispatchers.IO) { executeToolInternal(name, args) }
+                val result = withContext(Dispatchers.IO) { executeToolInternal(func.get("name").asString, func.get("arguments").asString, sIdx, aiMsgIndex) }
                 toolHistory.add(call to result)
             }
             executeMultiStepTurn(sIdx, aiMsgIndex, toolHistory)
         }
     }
 
-    private fun executeToolInternal(name: String, argsJson: String): String {
+    private fun executeToolInternal(name: String, argsJson: String, sIdx: Int, aiMsgIndex: Int): String {
         return try {
             val args = gson.fromJson(argsJson, JsonObject::class.java)
             when (name) {
-                "save_memory" -> { 
-                    val fact = if(args.has("fact")) args.get("fact").asString else "空事实"
-                    viewModelScope.launch(Dispatchers.Main) { addMemory(fact) }
-                    "已成功保存到记忆。" 
-                }
+                "save_memory" -> { viewModelScope.launch(Dispatchers.Main) { addMemory(args.get("fact").asString) }; "已保存。" }
                 "get_memories" -> gson.toJson(settings.memories)
-                "delete_memory" -> { 
-                    val idx = if(args.has("index")) args.get("index").asInt else -1
-                    viewModelScope.launch(Dispatchers.Main) { deleteMemory(idx) }
-                    "指令已发送。" 
-                }
-                "update_memory" -> { 
-                    val idx = if(args.has("index")) args.get("index").asInt else -1
-                    val text = if(args.has("text")) args.get("text").asString else ""
-                    viewModelScope.launch(Dispatchers.Main) { updateMemory(idx, text) }
-                    "指令已发送。" 
-                }
-                "exa_search" -> {
-                    val query = if(args.has("query")) args.get("query").asString else ""
-                    executeExaSearchSync(query)
-                }
+                "delete_memory" -> { viewModelScope.launch(Dispatchers.Main) { deleteMemory(args.get("index").asInt) }; "指令已发。" }
+                "update_memory" -> { viewModelScope.launch(Dispatchers.Main) { updateMemory(args.get("index").asInt, args.get("text").asString) }; "指令已发。" }
+                "exa_search" -> executeExaSearchSync(args.get("query").asString)
+                "browse_url" -> executeBrowseUrlSync(args.get("url").asString)
+                "calculate" -> executeJsCalculate(args.get("code").asString)
+                "text_to_image" -> executeTextToImageSync(args.get("prompt").asString, sIdx, aiMsgIndex)
+                "get_news_board" -> executeGetNewsBoardSync(args.get("board").asString)
                 else -> "未知工具。"
             }
-        } catch (e: Exception) { "工具执行逻辑错: ${e::class.java.simpleName} - ${e.message}" }
+        } catch (e: Exception) { "错误: ${e.message}" }
     }
 
-    private fun executeExaSearchSync(query: String): String {
-        if (settings.exaApiKey.isBlank()) return "错误：未配置 Exa API Key。"
-        if (query.isBlank()) return "错误：搜索关键词为空。"
-        return try {
-            val requestBody = JsonObject().apply {
-                addProperty("query", query)
-                addProperty("useAutoprompt", true)
-                addProperty("numResults", 3)
-                add("contents", JsonObject().apply { addProperty("text", true) })
+    private fun executeGetNewsBoardSync(board: String): String = try {
+        client.newCall(Request.Builder().url("https://60s.viki.moe/v2/$board").build()).execute().use { it.body?.string() ?: "空" }
+    } catch (e: Exception) { "失败: ${e.message}" }
+
+    private fun executeTextToImageSync(prompt: String, sIdx: Int, aiMsgIndex: Int): String = try {
+        val requestBody = JsonObject().apply { addProperty("model", "black-forest-labs/FLUX.1-schnell"); addProperty("prompt", prompt); addProperty("image_size", "1024x1024"); addProperty("num_inference_steps", 4) }
+        client.newCall(Request.Builder().url("${settings.baseUrl}/images/generations").header("Authorization", "Bearer ${settings.apiKey}").post(requestBody.toString().toRequestBody("application/json".toMediaType())).build()).execute().use { response ->
+            val imageUrl = gson.fromJson(response.body?.string(), JsonObject::class.java).getAsJsonArray("images").get(0).asJsonObject.get("url").asString
+            viewModelScope.launch(Dispatchers.Main) {
+                val updated = sessions[sIdx].messages.toMutableList()
+                updated[aiMsgIndex] = updated[aiMsgIndex].copy(imageUrl = imageUrl)
+                sessions[sIdx] = sessions[sIdx].copy(messages = updated)
             }
-            val request = Request.Builder()
-                .url("https://api.exa.ai/search")
-                .header("x-api-key", settings.exaApiKey)
-                .header("Content-Type", "application/json")
-                .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
-                .build()
-            
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) "搜索失败：HTTP ${response.code} - ${response.message}"
-                else response.body?.string() ?: "搜索结果为空。"
-            }
-        } catch (e: Exception) {
-            "Exa搜索IO异常: ${e::class.java.simpleName} - ${e.message}"
+            "生成的图片已展示。"
         }
+    } catch (e: Exception) { "绘图失败: ${e.message}" }
+
+    private fun executeBrowseUrlSync(url: String): String = try {
+        val doc = Jsoup.connect(url).timeout(10000).get()
+        val text = (doc.select("article").first() ?: doc.body()).text()
+        if (text.length > 8000) text.take(8000) + "..." else text
+    } catch (e: Exception) { "浏览失败: ${e.message}" }
+
+    private fun executeJsCalculate(code: String): String {
+        val rhino = RhinoContext.enter().apply { optimizationLevel = -1 }
+        return try { RhinoContext.toString(rhino.evaluateString(rhino.initStandardObjects(), code, "JS", 1, null)) } finally { RhinoContext.exit() }
     }
+
+    private fun executeExaSearchSync(query: String): String = try {
+        val requestBody = JsonObject().apply { addProperty("query", query); addProperty("useAutoprompt", true); addProperty("numResults", 3); add("contents", JsonObject().apply { addProperty("text", true) }) }
+        client.newCall(Request.Builder().url("https://api.exa.ai/search").header("x-api-key", settings.exaApiKey).post(requestBody.toString().toRequestBody("application/json".toMediaType())).build()).execute().use { it.body?.string() ?: "空" }
+    } catch (e: Exception) { "搜索异常: ${e.message}" }
 
     private fun getToolsDefinition() = JsonArray().apply {
-        add(createTool("save_memory", "记录用户信息或重要事实", mapOf("fact" to "string")))
-        add(createTool("get_memories", "检索已保存的记忆", emptyMap()))
-        add(createTool("exa_search", "在互联网上搜索最新实时信息、新闻、事实核核。", mapOf("query" to "string")))
-        add(createTool("delete_memory", "删除记忆条目", mapOf("index" to "integer")))
-        add(createTool("update_memory", "修改记忆内容", mapOf("index" to "integer", "text" to "string")))
+        add(createTool("save_memory", "记录用户信息", mapOf("fact" to "string")))
+        add(createTool("get_memories", "检索记忆", emptyMap()))
+        add(createTool("exa_search", "联网搜索", mapOf("query" to "string")))
+        add(createTool("browse_url", "阅读网页全文", mapOf("url" to "string")))
+        add(createTool("calculate", "执行JS计算", mapOf("code" to "string")))
+        add(createTool("text_to_image", "根据描述创作图片", mapOf("prompt" to "string")))
+        add(createTool("get_news_board", "获取新闻热搜(60s, weibo, zhihu, bili, douyin)", mapOf("board" to "string")))
+        add(createTool("delete_memory", "删除记忆", mapOf("index" to "integer")))
+        add(createTool("update_memory", "更新记忆", mapOf("index" to "integer", "text" to "string")))
     }
 
     private fun createTool(name: String, desc: String, props: Map<String, String>) = JsonObject().apply {
@@ -322,11 +381,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         add("function", JsonObject().apply {
             addProperty("name", name); addProperty("description", desc)
             add("parameters", JsonObject().apply {
-                addProperty("type", "object")
-                val pObj = JsonObject()
+                addProperty("type", "object"); val pObj = JsonObject()
                 props.forEach { (k, v) -> pObj.add(k, JsonObject().apply { addProperty("type", v) }) }
-                add("properties", pObj)
-                if(props.isNotEmpty()) add("required", JsonArray().apply { props.keys.forEach { add(it) } })
+                add("properties", pObj); if(props.isNotEmpty()) add("required", JsonArray().apply { props.keys.forEach { add(it) } })
             })
         })
     }
@@ -339,9 +396,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         if (existingIdx != -1) steps[existingIdx] = steps[existingIdx].copy(content = content)
         else { steps.forEach { it.isFinished = true }; steps.add(ChatStep(type, content, toolName)) }
         viewModelScope.launch(Dispatchers.Main) {
-            val updatedMessages = sessions[sIdx].messages.toMutableList()
-            updatedMessages[msgIdx] = msg.copy(steps = steps)
-            sessions[sIdx] = sessions[sIdx].copy(messages = updatedMessages)
+            val updated = sessions[sIdx].messages.toMutableList()
+            updated[msgIdx] = msg.copy(steps = steps)
+            sessions[sIdx] = sessions[sIdx].copy(messages = updated)
         }
     }
 
@@ -358,8 +415,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private fun finalizeMessage(sIdx: Int, msgIdx: Int) {
         viewModelScope.launch(Dispatchers.Main) {
             if (sIdx < sessions.size && msgIdx < sessions[sIdx].messages.size) {
-                val msg = sessions[sIdx].messages[msgIdx]
-                msg.steps.forEach { it.isFinished = true }
+                val msg = sessions[sIdx].messages[msgIdx]; msg.steps.forEach { it.isFinished = true }
                 val updated = sessions[sIdx].messages.toMutableList()
                 updated[msgIdx] = msg.copy(steps = msg.steps)
                 sessions[sIdx] = sessions[sIdx].copy(messages = updated)
@@ -367,10 +423,25 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun uriToContent(context: Context, uri: Uri): String? = try {
-        val bitmap = BitmapFactory.decodeStream(context.contentResolver.openInputStream(uri))
-        val out = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 70, out)
-        Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
-    } catch (e: Exception) { null }
+    private fun saveImageToInternalStorage(context: Context, uri: Uri): String? {
+        return try {
+            val bitmap = BitmapFactory.decodeStream(context.contentResolver.openInputStream(uri)) ?: return null
+            val file = File(context.cacheDir, "img_${System.currentTimeMillis()}.jpg")
+            FileOutputStream(file).use { out ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)
+            }
+            file.absolutePath
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private fun encodeFileToBase64(path: String): String? {
+        return try {
+             val bytes = File(path).readBytes()
+             val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+             "data:image/jpeg;base64,$base64"
+        } catch (e: Exception) { null }
+    }
 }

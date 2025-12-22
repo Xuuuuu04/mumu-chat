@@ -26,7 +26,8 @@ data class ChatMessage(
 
 data class ChatSession(
     val id: String = java.util.UUID.randomUUID().toString(),
-    val title: String,
+    var title: String,
+    val folder: String? = null, // 新增文件夹字段
     val messages: List<ChatMessage> = emptyList(),
     val lastModified: Long = System.currentTimeMillis()
 )
@@ -36,7 +37,20 @@ data class AppSettings(
     val apiKey: String = "sk-kjfvtxdspxngnsgsmeciaycwitfpuyvnybokuivrliquzbbt",
     val exaApiKey: String = "6112f5dc-bc6e-4632-aee0-b9d62afa6b41",
     val selectedModel: String = "MiniMaxAI/MiniMax-M2",
-    val availableModels: List<String> = listOf("MiniMaxAI/MiniMax-M2", "moonshotai/Kimi-K2-Thinking", "deepseek-ai/DeepSeek-V3", "deepseek-ai/DeepSeek-R1", "google/gemma-2-27b-it"),
+    val availableModels: List<String> = listOf(
+        "deepseek-ai/DeepSeek-V3.2",
+        "deepseek-ai/DeepSeek-R1",
+        "moonshotai/Kimi-K2-Thinking",
+        "MiniMaxAI/MiniMax-M2",
+        "zai-org/GLM-4.6V",
+        "zai-org/GLM-4.6",
+        "Qwen/Qwen3-VL-32B-Thinking",
+        "Qwen/Qwen3-Omni-30B-A3B-Thinking",
+        "Qwen/Qwen3-Omni-30B-A3B-Captioner",
+        "Qwen/Qwen3-Next-80B-A3B-Thinking",
+        "ByteDance-Seed/Seed-OSS-36B-Instruct"
+    ),
+    val folders: List<String> = listOf("生活", "工作", "学习"),
     val fetchedModels: List<String> = emptyList(),
     val systemPrompt: String = """你是一个具备深度思考能力的超级 AI 助手 MuMu。
 当前系统时间: {CURRENT_TIME}
