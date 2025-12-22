@@ -725,19 +725,19 @@ fun SettingsDialog(viewModel: ChatViewModel, onDismiss: () -> Unit) {
 
 @Composable
 fun ProfileDialog(viewModel: ChatViewModel, onDismiss: () -> Unit) {
-    var prompt by remember { mutableStateOf(viewModel.settings.systemPrompt) }
+    var persona by remember { mutableStateOf(viewModel.settings.userPersona) }
     var newMemory by remember { mutableStateOf("") }
     val memories = viewModel.settings.memories
     AlertDialog(onDismissRequest = onDismiss, title = { Text("AI 个性化与记忆") }, text = {
         Column(modifier = Modifier.fillMaxWidth().heightIn(max = 500.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("系统人设", style = MaterialTheme.typography.labelLarge, color = BrandPrimary)
-            OutlinedTextField(value = prompt, onValueChange = { prompt = it }, modifier = Modifier.fillMaxWidth(), minLines = 3, shape = RoundedCornerShape(12.dp))
+            Text("个性化设定 / Persona", style = MaterialTheme.typography.labelLarge, color = BrandPrimary)
+            OutlinedTextField(value = persona, onValueChange = { persona = it }, modifier = Modifier.fillMaxWidth(), minLines = 3, shape = RoundedCornerShape(12.dp), placeholder = { Text("例如：你是一个幽默的程序员...") })
             HorizontalDivider(); Text("长期记忆", style = MaterialTheme.typography.labelLarge, color = BrandPrimary)
             if (memories.isEmpty()) Text("暂无记忆", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
             memories.forEachIndexed { i, m -> MemoryItem(text = m, onDelete = { viewModel.deleteMemory(i) }, onUpdate = { viewModel.updateMemory(i, it) }) }
             OutlinedTextField(value = newMemory, onValueChange = { newMemory = it }, placeholder = { Text("添加记忆...") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), trailingIcon = { IconButton(onClick = { viewModel.addMemory(newMemory); newMemory = "" }, enabled = newMemory.isNotBlank()) { Icon(Icons.Default.AddCircle, null, tint = if(newMemory.isNotBlank()) BrandPrimary else Color.Gray) } })
         }
-    }, confirmButton = { Button(onClick = { viewModel.updateSettings(viewModel.settings.copy(systemPrompt = prompt)); onDismiss() }) { Text("完成") } })
+    }, confirmButton = { Button(onClick = { viewModel.updateSettings(viewModel.settings.copy(userPersona = persona)); onDismiss() }) { Text("完成") } })
 }
 
 @Composable

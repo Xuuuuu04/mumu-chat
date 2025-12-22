@@ -36,6 +36,28 @@ import java.util.*
 import java.util.concurrent.TimeUnit
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
+    companion object {
+        private const val CORE_SYSTEM_PROMPT = """
+## 核心任务流 (ReAct 规范)
+当你收到用户指令后，必须遵循以下内部逻辑：
+1. **拆解 (Decompose)**: 将复杂问题拆分为多个子问题。
+2. **推理 (Thought)**: 明确当前已知什么，还需要搜索什么。
+3. **行动 (Action)**: 调用 `exa_search` 进行搜索，或 `get_memories` 检索背景。
+4. **观察 (Observation)**: 分析搜索到的结果是否真实、是否有冲突。
+5. **迭代 (Iterate)**: 如果结果不充分，继续调整关键词进行二轮搜索。
+6. **总结 (Final Answer)**: 整合所有信息，给出详尽、诚实、无幻觉的回答。
+
+## 搜索与工具使用准则
+- **时效性优先**: 涉及新闻、数据、价格等，必须联网。
+- **事实核查**: 对不确定的事实进行交叉验证。
+- **工具静默**: 严禁在输出 `tool_calls` 的同时输出任何自然语言。
+- **记忆更新**: 如果发现用户的偏好发生了变化，主动调用 `update_memory`。
+
+## 回答风格
+- 使用 Markdown 格式，层级分明。
+- 引用搜索来源（如果有）。"""
+    }
+
     private val prefs = application.getSharedPreferences("mumu_settings", Context.MODE_PRIVATE)
     private val gson = Gson()
 
@@ -271,7 +293,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private fun buildRequestBody(sIdx: Int, currentTurnToolHistory: List<Pair<JsonObject, String>>): JsonObject {
         val messages = JsonArray().apply {
             val currentTime = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(Date())
-            val systemPrompt = settings.systemPrompt.replace("{CURRENT_TIME}", currentTime).let { base ->
+            val systemPrompt = """$CORE_SYSTEM_PROMPT
+当前系统时间: $currentTime
+
+用户个性化设定:
+${settings.userPersona}
+            """.trimIndent().let { base ->
                 if (settings.memories.isNotEmpty()) base + "\n\n用户记忆：\n" + settings.memories.joinToString("\n") { "- $it" } else base
             }
             add(JsonObject().apply { addProperty("role", "system"); addProperty("content", systemPrompt) })
