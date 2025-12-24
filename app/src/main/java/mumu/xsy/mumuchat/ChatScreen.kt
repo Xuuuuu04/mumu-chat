@@ -103,13 +103,15 @@ fun ChatScreen(viewModel: ChatViewModel) {
 
 /**
  * HTML 预览对话框
- * 使用 WebView 渲染 HTML 内容
+ * 使用 WebView 渲染 HTML 内容，修复内存泄漏问题
  */
 @Composable
 fun HtmlPreviewDialog(
     htmlContent: String,
     onDismiss: () -> Unit
 ) {
+    var webView by remember { mutableStateOf<WebView?>(null) }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -138,7 +140,7 @@ fun HtmlPreviewDialog(
                     }
                 }
 
-                // WebView 渲染区域
+                // WebView 渲染区域（修复内存泄漏）
                 AndroidView(
                     factory = { context ->
                         WebView(context).apply {
@@ -146,19 +148,38 @@ fun HtmlPreviewDialog(
                             settings.domStorageEnabled = true
                             settings.useWideViewPort = true
                             settings.loadWithOverviewMode = true
-                        }
+                            settings.builtInZoomControls = true
+                            settings.displayZoomControls = false
+                        }.also { webView = it }
                     },
-                    update = { webView ->
-                        webView.loadDataWithBaseURL(
-                            null,
-                            htmlContent,
-                            "text/html",
-                            "utf-8",
-                            null
-                        )
+                    update = { view ->
+                        webView?.let { w ->
+                            if (w != view) {
+                                w.loadDataWithBaseURL(
+                                    null,
+                                    htmlContent,
+                                    "text/html",
+                                    "utf-8",
+                                    null
+                                )
+                            }
+                        }
                     },
                     modifier = Modifier.weight(1f)
                 )
+
+                // 确保 WebView 在关闭时销毁
+                DisposableEffect(Unit) {
+                    onDispose {
+                        webView?.apply {
+                            clearHistory()
+                            clearCache(true)
+                            clearFormData()
+                            destroy()
+                        }
+                        webView = null
+                    }
+                }
             }
         }
     }

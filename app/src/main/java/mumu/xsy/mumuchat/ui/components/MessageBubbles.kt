@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -25,6 +26,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
+import coil.request.ImageRequest
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
@@ -47,11 +50,12 @@ fun ChatMessagesArea(
     onPreviewHtml: (String) -> Unit
 ) {
     val listState = rememberLazyListState()
+    val messages = viewModel.currentMessages
 
-    // 当消息数量变化时，滚动到底部
-    LaunchedEffect(viewModel.currentMessages.size) {
-        if (viewModel.currentMessages.isNotEmpty()) {
-            listState.animateScrollToItem(viewModel.currentMessages.size - 1)
+    // 当消息数量变化时，滚动到底部（避免首次加载时自动滚动）
+    LaunchedEffect(messages.size, messages.lastOrNull()?.timestamp) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.size - 1)
         }
     }
 
@@ -61,7 +65,10 @@ fun ChatMessagesArea(
         contentPadding = PaddingValues(bottom = 24.dp, start = 16.dp, end = 16.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
-        itemsIndexed(viewModel.currentMessages) { index, message ->
+        itemsIndexed(
+            items = messages,
+            key = { _, msg -> msg.id ?: "${msg.role}_${msg.timestamp}" }
+        ) { index, message ->
             MessageItem(
                 message = message,
                 onEdit = { viewModel.editMessage(index) },
@@ -113,6 +120,73 @@ fun MessageItem(
 }
 
 /**
+ * 优化的图片加载组件
+ * 支持加载状态、错误处理和缓存配置
+ */
+@Composable
+fun ChatImage(
+    imageUrl: String,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Crop,
+    shape: RoundedCornerShape = RoundedCornerShape(20.dp)
+) {
+    val context = LocalContext.current
+
+    SubcomposeAsyncImage(
+        model = ImageRequest.Builder(context)
+            .data(imageUrl)
+            .crossfade(true)
+            .memoryCacheKey(imageUrl)
+            .build(),
+        contentDescription = null,
+        modifier = modifier.clip(shape),
+        contentScale = contentScale,
+        loading = {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                        shape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    strokeWidth = 2.dp,
+                    color = BrandPrimary
+                )
+            }
+        },
+        error = {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f),
+                        shape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Default.Warning,
+                        null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Text(
+                        "加载失败",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        }
+    )
+}
+
+/**
  * 用户消息气泡组件
  */
 @Composable
@@ -124,21 +198,18 @@ fun UserBubble(
     val clipboard = LocalClipboardManager.current
 
     Column(horizontalAlignment = Alignment.End) {
-        // 图片附件
+        // 图片附件（优化加载）
         if (message.imageUrl != null) {
-            AsyncImage(
-                model = message.imageUrl,
-                contentDescription = null,
+            ChatImage(
+                imageUrl = message.imageUrl,
                 modifier = Modifier
                     .padding(bottom = 8.dp)
                     .sizeIn(maxWidth = 260.dp, maxHeight = 260.dp)
-                    .clip(RoundedCornerShape(20.dp))
                     .border(
                         1.dp,
                         MaterialTheme.colorScheme.outline,
                         RoundedCornerShape(20.dp)
-                    ),
-                contentScale = ContentScale.Crop
+                    )
             )
         }
 
@@ -206,15 +277,13 @@ fun AiBubble(
             Spacer(Modifier.height(16.dp))
         }
 
-        // 图片附件
+        // 图片附件（优化加载）
         if (message.imageUrl != null) {
-            AsyncImage(
-                model = message.imageUrl,
-                contentDescription = null,
+            ChatImage(
+                imageUrl = message.imageUrl,
                 modifier = Modifier
                     .padding(bottom = 12.dp)
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
                     .border(
                         1.dp,
                         MaterialTheme.colorScheme.outline,

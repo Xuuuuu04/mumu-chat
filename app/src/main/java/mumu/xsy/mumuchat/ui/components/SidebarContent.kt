@@ -31,6 +31,8 @@ fun SidebarContent(
 ) {
     var showRenameDialog by remember { mutableStateOf<String?>(null) } // SessionId
     var showNewFolderDialog by remember { mutableStateOf(false) }
+    var showExportSnackbar by remember { mutableStateOf(false) }
+    var exportMessage by remember { mutableStateOf("") }
     var newTitle by remember { mutableStateOf("") }
     var newFolderName by remember { mutableStateOf("") }
 
@@ -79,6 +81,26 @@ fun SidebarContent(
             }
 
             Spacer(Modifier.height(24.dp))
+
+            // 导出按钮
+            OutlinedButton(
+                onClick = {
+                    val markdown = viewModel.exportCurrentSessionToMarkdown()
+                    if (markdown.isNotEmpty()) {
+                        exportMessage = "已复制到剪贴板 (Markdown格式)"
+                    } else {
+                        exportMessage = "无会话可导出"
+                    }
+                    showExportSnackbar = true
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Share, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("导出对话")
+            }
+
+            Spacer(Modifier.height(16.dp))
 
             // 文件夹标题栏
             Row(
@@ -223,6 +245,14 @@ fun SidebarContent(
                 Spacer(Modifier.width(16.dp))
                 Text("模型与Key配置")
             }
+        }
+    }
+
+    // 导出提示 Snackbar
+    if (showExportSnackbar) {
+        LaunchedEffect(Unit) {
+            kotlinx.coroutines.delay(2000)
+            showExportSnackbar = false
         }
     }
 

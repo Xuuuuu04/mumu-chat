@@ -16,6 +16,7 @@ enum class MessageRole {
 }
 
 data class ChatMessage(
+    val id: String = java.util.UUID.randomUUID().toString(),
     val content: String,
     val role: MessageRole,
     val steps: List<ChatStep> = emptyList(),

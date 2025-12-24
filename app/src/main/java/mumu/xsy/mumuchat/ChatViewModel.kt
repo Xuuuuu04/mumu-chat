@@ -10,6 +10,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
@@ -18,6 +23,7 @@ import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.*
@@ -38,9 +44,13 @@ import java.util.concurrent.TimeUnit
 
 import android.util.Log
 
+// DataStore 扩展
+private val Context.sessionDataStore: DataStore<Preferences> by preferencesDataStore(name = "sessions")
+
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         private const val TAG = "ChatViewModel"
+        private val SESSIONS_KEY = stringPreferencesKey("sessions_data")
 
         private const val CORE_SYSTEM_PROMPT = """
 ## 核心任务流 (ReAct 规范)
@@ -80,15 +90,71 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val currentMessages: List<ChatMessage>
         get() = sessions.find { it.id == currentSessionId }?.messages ?: emptyList()
 
+    // 优化的网络客户端配置
     private val client = OkHttpClient.Builder()
         .connectTimeout(60, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS) // SSE 需要更长的读取超时
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .connectionPool(ConnectionPool(5, 5, TimeUnit.MINUTES))
+        .retryOnConnectionFailure(true)
+        .addInterceptor { chain ->
+            val original = chain.request()
+            val request = original.newBuilder()
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .method(original.method, original.body)
+                .build()
+            chain.proceed(request)
+        }
         .build()
 
     init {
-        val firstSession = ChatSession(title = "新对话")
-        sessions.add(firstSession)
-        currentSessionId = firstSession.id
+        // 加载保存的会话
+        viewModelScope.launch(Dispatchers.IO) {
+            loadSessionsFromDataStore()
+        }
+        // 如果没有会话，创建一个新的
+        if (sessions.isEmpty()) {
+            val firstSession = ChatSession(title = "新对话")
+            sessions.add(firstSession)
+            currentSessionId = firstSession.id
+        }
+    }
+
+    /**
+     * 从 DataStore 加载会话
+     */
+    private suspend fun loadSessionsFromDataStore() {
+        try {
+            val context = getApplication<Application>()
+            val json = context.sessionDataStore.data.first()[SESSIONS_KEY]
+            if (!json.isNullOrEmpty()) {
+                val loadedSessions: List<ChatSession> = gson.fromJson(json, object : com.google.gson.reflect.TypeToken<List<ChatSession>>() {}.type)
+                sessions.clear()
+                sessions.addAll(loadedSessions)
+                Log.d(TAG, "成功加载 ${loadedSessions.size} 个会话")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "加载会话失败", e)
+        }
+    }
+
+    /**
+     * 保存会话到 DataStore
+     */
+    private fun saveSessionsToDataStore() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val context = getApplication<Application>()
+                val json = gson.toJson(sessions.toList())
+                context.sessionDataStore.edit { preferences ->
+                    preferences[SESSIONS_KEY] = json
+                }
+                Log.d(TAG, "会话已保存，共 ${sessions.size} 个")
+            } catch (e: Exception) {
+                Log.e(TAG, "保存会话失败", e)
+            }
+        }
     }
 
     private fun loadSettings(): AppSettings {
@@ -186,22 +252,65 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectSession(id: String) { currentSessionId = id }
-    fun createNewChat() { sessions.add(0, ChatSession(title = "新对话")).also { currentSessionId = sessions[0].id } }
+    fun createNewChat() {
+        sessions.add(0, ChatSession(title = "新对话"))
+        currentSessionId = sessions[0].id
+        saveSessionsToDataStore()
+    }
     fun stopGeneration() { currentEventSource?.cancel(); currentGenerationJob?.cancel() }
 
     fun renameSession(sessionId: String, newTitle: String) {
         val index = sessions.indexOfFirst { it.id == sessionId }
-        if (index != -1) sessions[index] = sessions[index].copy(title = newTitle)
+        if (index != -1) {
+            sessions[index] = sessions[index].copy(title = newTitle)
+            saveSessionsToDataStore()
+        }
     }
 
     fun deleteSession(sessionId: String) {
         sessions.removeAll { it.id == sessionId }
         if (currentSessionId == sessionId) currentSessionId = sessions.firstOrNull()?.id ?: createNewChat().let { sessions[0].id }
+        saveSessionsToDataStore()
     }
 
     fun moveSessionToFolder(sessionId: String, folderName: String?) {
         val index = sessions.indexOfFirst { it.id == sessionId }
-        if (index != -1) sessions[index] = sessions[index].copy(folder = folderName)
+        if (index != -1) {
+            sessions[index] = sessions[index].copy(folder = folderName)
+            saveSessionsToDataStore()
+        }
+    }
+
+    /**
+     * 导出当前会话为 Markdown 格式
+     * @return 导出的 Markdown 文本
+     */
+    fun exportCurrentSessionToMarkdown(): String {
+        val sessionId = currentSessionId ?: return ""
+        val session = sessions.find { it.id == sessionId } ?: return ""
+
+        val sb = StringBuilder()
+        sb.appendLine("# ${session.title}")
+        sb.appendLine()
+        sb.appendLine("> 导出时间: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}")
+        sb.appendLine()
+
+        session.messages.forEach { msg ->
+            val roleName = when (msg.role) {
+                MessageRole.USER -> "👤 用户"
+                MessageRole.ASSISTANT -> "🤖 AI"
+                MessageRole.SYSTEM -> "⚙️ 系统"
+                MessageRole.TOOL -> "🔧 工具"
+            }
+            sb.appendLine("## $roleName")
+            sb.appendLine()
+            sb.appendLine(msg.content)
+            sb.appendLine()
+            sb.appendLine("---")
+            sb.appendLine()
+        }
+
+        return sb.toString()
     }
 
     fun editMessage(index: Int) {
@@ -225,16 +334,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val currentInput = text
 
             withContext(Dispatchers.Main) {
-                val userMsg = ChatMessage(currentInput, MessageRole.USER, imageUrl = finalImageUrl)
-                val aiMsgPlaceholder = ChatMessage("", MessageRole.ASSISTANT, steps = emptyList())
-                
+                val userMsg = ChatMessage(content = currentInput, role = MessageRole.USER, imageUrl = finalImageUrl)
+                val aiMsgPlaceholder = ChatMessage(content = "", role = MessageRole.ASSISTANT, steps = emptyList())
+
                 val isFirst = sessions[sIdx].messages.isEmpty()
                 sessions[sIdx] = sessions[sIdx].copy(messages = sessions[sIdx].messages + userMsg + aiMsgPlaceholder)
                 val aiMsgIndex = sessions[sIdx].messages.size - 1
-                
+
                 selectedImageUri = null
                 executeMultiStepTurn(sIdx, aiMsgIndex, mutableListOf())
                 if (isFirst) autoRenameSession(sIdx, currentInput)
+                saveSessionsToDataStore()
             }
         }
     }
@@ -955,6 +1065,7 @@ ${settings.userPersona}
                 session.messages.map { transform(it) }
             }
             sessions[sIdx] = session.copy(messages = messages)
+            saveSessionsToDataStore()
         }
     }
 

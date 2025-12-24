@@ -47,6 +47,7 @@ dependencies {
     implementation libs.androidx.compose.ui.graphics
     implementation libs.androidx.compose.ui.tooling.preview
     implementation libs.androidx.compose.material3
+    implementation libs.androidx.datastore
     implementation libs.langchain4j.open.ai
     implementation libs.slf4j.android
     implementation "com.squareup.okhttp3:okhttp:4.12.0"
