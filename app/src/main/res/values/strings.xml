@@ -1,3 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- 应用名称 -->
     <string name="app_name">MuMuChat</string>
+
+    <!-- 侧边栏 -->
+    <string name="app_title">MuMu Chat</string>
+    <string name="app_subtitle">Super Agent v2.0</string>
+    <string name="new_chat">新对话</string>
+    <string name="folders">Folders</string>
+    <string name="settings_entry">模型与Key配置</string>
+
+    <!-- 会话操作 -->
+    <string name="rename_session">重命名会话</string>
+    <string name="save">保存</string>
+    <string name="delete">删除</string>
+    <string name="rename">重命名</string>
+    <string name="create_folder">新建文件夹</string>
+    <string name="folder_name">文件夹名称</string>
+    <string name="create">创建</string>
+    <string name="delete_folder">删除文件夹</string>
+    <string name="move_out_of_folder">移出文件夹</string>
+    <string name="move_to_folder">移至: %s</string>
+
+    <!-- 消息气泡 -->
+    <string name="ai_sender">MuMu Intelligence</string>
+    <string name="preview_html">预览 HTML / 运行代码</string>
+
+    <!-- 任务链 -->
+    <string name="task_flow_running">任务链执行中</string>
+    <string name="thinking">思考中...</string>
+    <string name="action">Action: %s</string>
+
+    <!-- 输入栏 -->
+    <string name="input_hint">发个消息给 MuMu...</string>
+    <string name="attach_image">图片</string>
+    <string name="attach_document">文档</string>
+
+    <!-- 设置对话框 -->
+    <string name="settings_title">模型与Key配置</string>
+    <string name="base_url">Base URL</string>
+    <string name="api_key">API Key</string>
+    <string name="exa_search_key">Exa Search Key</string>
+    <string name="model_management">模型管理</string>
+    <string name="add_model_manually">手动添加模型</string>
+    <string name="available_models">可用模型列表</string>
+    <string name="fetch_updates">拉取更新</string>
+    <string name="new_models_found">发现新模型 (%d)</string>
+    <string name="add_selected">添加选中 (%d)</string>
+
+    <!-- 个性化对话框 -->
+    <string name="profile_title">AI 个性化与记忆</string>
+    <string name="persona_setting">个性化设定 / Persona</string>
+    <string name="persona_hint">例如：你是一个幽默的程序员...</string>
+    <string name="long_term_memory">长期记忆</string>
+    <string name="no_memory">暂无记忆</string>
+    <string name="add_memory">添加记忆...</string>
+    <string name="done">完成</string>
+    <string name="cancel">取消</string>
+
+    <!-- 错误消息 -->
+    <string name="error_occurred">错误: %s</string>
+    <string name="unknown_error">未知错误</string>
+    <string name="file_parse_failed">[文件解析失败]: %s</string>
+
+    <!-- 模型相关 -->
+    <string name="vision_models">vl,gemini,vision,omni,glm,step,ocr</string>
 </resources>

@@ -35,8 +35,12 @@ import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
 
+import android.util.Log
+
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
+        private const val TAG = "ChatViewModel"
+
         private const val CORE_SYSTEM_PROMPT = """
 ## 核心任务流 (ReAct 规范)
 当你收到用户指令后，必须遵循以下内部逻辑：
@@ -144,16 +148,39 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun fetchAvailableModels() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val request = Request.Builder().url("${settings.baseUrl}/models").header("Authorization", "Bearer ${settings.apiKey}").get().build()
+                val request = Request.Builder()
+                    .url("${settings.baseUrl}/models")
+                    .header("Authorization", "Bearer ${settings.apiKey}")
+                    .get()
+                    .build()
+
                 client.newCall(request).execute().use { response ->
-                    if (response.isSuccessful) {
-                        val ids = gson.fromJson(response.body?.string(), JsonObject::class.java).getAsJsonArray("data").map { it.asJsonObject.get("id").asString }
-                        launch(Dispatchers.Main) { 
-                            saveSettings(settings.copy(fetchedModels = ids.sorted())) 
-                        }
+                    if (!response.isSuccessful) {
+                        Log.w(TAG, "获取模型列表失败: HTTP ${response.code}")
+                        return@use
                     }
+
+                    val bodyString = response.body?.string()
+                    if (bodyString.isNullOrEmpty()) {
+                        Log.w(TAG, "获取模型列表失败: 响应体为空")
+                        return@use
+                    }
+
+                    val jsonObject = gson.fromJson(bodyString, JsonObject::class.java)
+                    val dataArray = jsonObject.getAsJsonArray("data") ?: run {
+                        Log.w(TAG, "获取模型列表失败: 无 data 字段")
+                        return@use
+                    }
+
+                    val ids = dataArray.mapNotNull { it.asJsonObject.get("id")?.asString }
+                    launch(Dispatchers.Main) {
+                        saveSettings(settings.copy(fetchedModels = ids.sorted()))
+                    }
+                    Log.d(TAG, "成功获取 ${ids.size} 个模型")
                 }
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+                Log.e(TAG, "获取模型列表异常", e)
+            }
         }
     }
 
@@ -212,6 +239,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun autoRenameSession(sIdx: Int, userFirstMsg: String) {
+        if (sIdx >= sessions.size) {
+            Log.w(TAG, "autoRenameSession: 无效的会话索引 $sIdx")
+            return
+        }
+
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val prompt = "总结一个2-5个字的对话标题，不要标点符号。用户说: \"$userFirstMsg\""
@@ -219,14 +251,50 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     addProperty("model", "deepseek-ai/DeepSeek-V3")
                     add("messages", JsonArray().apply { add(JsonObject().apply { addProperty("role", "user"); addProperty("content", prompt) }) })
                 }
-                val request = Request.Builder().url("${settings.baseUrl}/chat/completions").header("Authorization", "Bearer ${settings.apiKey}").post(requestBody.toString().toRequestBody("application/json".toMediaType())).build()
+                val request = Request.Builder()
+                    .url("${settings.baseUrl}/chat/completions")
+                    .header("Authorization", "Bearer ${settings.apiKey}")
+                    .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+
                 client.newCall(request).execute().use { response ->
-                    if (response.isSuccessful) {
-                        val title = gson.fromJson(response.body?.string(), JsonObject::class.java).getAsJsonArray("choices").get(0).asJsonObject.getAsJsonObject("message").get("content").asString.trim().replace("\"", "")
-                        launch(Dispatchers.Main) { renameSession(sessions[sIdx].id, title) }
+                    if (!response.isSuccessful) {
+                        Log.w(TAG, "自动重命名失败: HTTP ${response.code}")
+                        return@use
+                    }
+
+                    val bodyString = response.body?.string()
+                    if (bodyString.isNullOrEmpty()) {
+                        Log.w(TAG, "自动重命名失败: 响应体为空")
+                        return@use
+                    }
+
+                    val jsonObject = gson.fromJson(bodyString, JsonObject::class.java)
+                    val choices = jsonObject.getAsJsonArray("choices")
+                    if (choices == null || choices.size() == 0) {
+                        Log.w(TAG, "自动重命名失败: 无 choices 字段")
+                        return@use
+                    }
+
+                    val title = choices.get(0).asJsonObject
+                        .getAsJsonObject("message")
+                        ?.get("content")
+                        ?.asString
+                        ?.trim()
+                        ?.replace("\"", "")
+                        ?: run {
+                            Log.w(TAG, "自动重命名失败: 无法解析标题")
+                            return@use
+                        }
+
+                    launch(Dispatchers.Main) {
+                        renameSession(sessions[sIdx].id, title)
+                        Log.d(TAG, "会话已自动重命名: $title")
                     }
                 }
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+                Log.e(TAG, "自动重命名异常", e)
+            }
         }
     }
 
@@ -234,9 +302,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         stopGeneration()
         currentGenerationJob = viewModelScope.launch(Dispatchers.IO) {
             val requestBody = buildRequestBody(sIdx, historyOfToolCalls)
-            val request = Request.Builder().url("${settings.baseUrl}/chat/completions")
+            val request = Request.Builder()
+                .url("${settings.baseUrl}/chat/completions")
                 .header("Authorization", "Bearer ${settings.apiKey}")
-                .post(requestBody.toString().toRequestBody("application/json".toMediaType())).build()
+                .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
+                .build()
 
             var currentContent = ""
             var currentThinking = ""
@@ -247,45 +317,85 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     if (data == "[DONE]") {
                         if (activeToolCalls.isNotEmpty()) {
                             processAndContinue(sIdx, aiMsgIndex, activeToolCalls.values.toList(), historyOfToolCalls)
-                        } else { finalizeMessage(sIdx, aiMsgIndex) }
+                        } else {
+                            finalizeMessage(sIdx, aiMsgIndex)
+                        }
                         return
                     }
+
                     try {
-                        val delta = gson.fromJson(data, JsonObject::class.java).getAsJsonArray("choices").get(0).asJsonObject.getAsJsonObject("delta")
+                        val jsonObject = gson.fromJson(data, JsonObject::class.java)
+                        val choices = jsonObject.getAsJsonArray("choices")
+                        if (choices == null || choices.size() == 0) {
+                            Log.w(TAG, "SSE 事件无 choices 数据")
+                            return
+                        }
+
+                        val delta = choices.get(0).asJsonObject.getAsJsonObject("delta")
+                        if (delta == null) {
+                            Log.w(TAG, "SSE 事件无 delta 数据")
+                            return
+                        }
+
                         if (delta.has("reasoning_content") && !delta.get("reasoning_content").isJsonNull) {
                             currentThinking += delta.get("reasoning_content").asString
                             updateStep(sIdx, aiMsgIndex, StepType.THINKING, currentThinking)
                         }
+
                         if (delta.has("tool_calls")) {
-                            delta.getAsJsonArray("tool_calls").forEach { 
-                                val tc = it.asJsonObject
-                                val idx = tc.get("index").asInt
-                                val obj = activeToolCalls.getOrPut(idx) { JsonObject().apply { 
-                                    addProperty("id", tc.get("id")?.asString ?: "")
-                                    addProperty("type", "function")
-                                    add("function", JsonObject().apply { addProperty("name", ""); addProperty("arguments", "") })
-                                } }
+                            delta.getAsJsonArray("tool_calls").forEach { tcElement ->
+                                val tc = tcElement.asJsonObject
+                                val idx = tc.get("index")?.asInt ?: return@forEach
+
+                                val obj = activeToolCalls.getOrPut(idx) {
+                                    JsonObject().apply {
+                                        addProperty("id", tc.get("id")?.asString ?: "")
+                                        addProperty("type", "function")
+                                        add("function", JsonObject().apply {
+                                            addProperty("name", "")
+                                            addProperty("arguments", "")
+                                        })
+                                    }
+                                }
+
                                 val func = obj.getAsJsonObject("function")
                                 if (tc.has("function")) {
                                     val tcFunc = tc.getAsJsonObject("function")
-                                    if (tcFunc.has("name")) func.addProperty("name", func.get("name").asString + tcFunc.get("name").asString)
-                                    if (tcFunc.has("arguments")) func.addProperty("arguments", func.get("arguments").asString + tcFunc.get("arguments").asString)
+                                    val currentName = func.get("name")?.asString ?: ""
+                                    val currentArgs = func.get("arguments")?.asString ?: ""
+
+                                    if (tcFunc.has("name")) {
+                                        func.addProperty("name", currentName + tcFunc.get("name").asString)
+                                    }
+                                    if (tcFunc.has("arguments")) {
+                                        func.addProperty("arguments", currentArgs + tcFunc.get("arguments").asString)
+                                    }
                                 }
-                                updateStep(sIdx, aiMsgIndex, StepType.TOOL_CALL, func.get("arguments").asString, func.get("name").asString)
+
+                                updateStep(sIdx, aiMsgIndex, StepType.TOOL_CALL,
+                                    func.get("arguments")?.asString ?: "",
+                                    func.get("name")?.asString)
                             }
                         }
+
                         if (delta.has("content") && !delta.get("content").isJsonNull) {
                             if (!delta.has("tool_calls") && activeToolCalls.isEmpty()) {
                                 currentContent += delta.get("content").asString
                                 updateMessageContent(sIdx, aiMsgIndex, currentContent)
                             }
                         }
-                    } catch (e: Exception) {}
+                    } catch (e: Exception) {
+                        Log.e(TAG, "SSE 事件解析异常", e)
+                    }
                 }
+
                 override fun onFailure(eventSource: EventSource, t: Throwable?, response: Response?) {
-                    updateMessageContent(sIdx, aiMsgIndex, "错误: ${t?.message}")
+                    val errorMsg = t?.message ?: response?.message ?: "未知错误"
+                    Log.e(TAG, "SSE 连接失败: $errorMsg")
+                    updateMessageContent(sIdx, aiMsgIndex, "错误: $errorMsg")
                 }
             }
+
             currentEventSource = EventSources.createFactory(client).newEventSource(request, listener)
         }
     }
@@ -367,17 +477,62 @@ ${settings.userPersona}
     } catch (e: Exception) { "失败: ${e.message}" }
 
     private fun executeTextToImageSync(prompt: String, sIdx: Int, aiMsgIndex: Int): String = try {
-        val requestBody = JsonObject().apply { addProperty("model", "black-forest-labs/FLUX.1-schnell"); addProperty("prompt", prompt); addProperty("image_size", "1024x1024"); addProperty("num_inference_steps", 4) }
-        client.newCall(Request.Builder().url("${settings.baseUrl}/images/generations").header("Authorization", "Bearer ${settings.apiKey}").post(requestBody.toString().toRequestBody("application/json".toMediaType())).build()).execute().use { response ->
-            val imageUrl = gson.fromJson(response.body?.string(), JsonObject::class.java).getAsJsonArray("images").get(0).asJsonObject.get("url").asString
+        val requestBody = JsonObject().apply {
+            addProperty("model", "black-forest-labs/FLUX.1-schnell")
+            addProperty("prompt", prompt)
+            addProperty("image_size", "1024x1024")
+            addProperty("num_inference_steps", 4)
+        }
+
+        val request = Request.Builder()
+            .url("${settings.baseUrl}/images/generations")
+            .header("Authorization", "Bearer ${settings.apiKey}")
+            .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                Log.w(TAG, "生图失败: HTTP ${response.code}")
+                return@use "绘图失败: HTTP ${response.code}"
+            }
+
+            val bodyString = response.body?.string()
+            if (bodyString.isNullOrEmpty()) {
+                Log.w(TAG, "生图失败: 响应体为空")
+                return@use "绘图失败: 响应体为空"
+            }
+
+            val jsonObject = gson.fromJson(bodyString, JsonObject::class.java)
+            val images = jsonObject.getAsJsonArray("images")
+            if (images == null || images.size() == 0) {
+                Log.w(TAG, "生图失败: 无 images 字段")
+                return@use "绘图失败: 无 images 字段"
+            }
+
+            val imageUrl = images.get(0).asJsonObject.get("url")?.asString
+            if (imageUrl == null) {
+                Log.w(TAG, "生图失败: 无 url 字段")
+                return@use "绘图失败: 无 url 字段"
+            }
+
             viewModelScope.launch(Dispatchers.Main) {
-                val updated = sessions[sIdx].messages.toMutableList()
-                updated[aiMsgIndex] = updated[aiMsgIndex].copy(imageUrl = imageUrl)
-                sessions[sIdx] = sessions[sIdx].copy(messages = updated)
+                try {
+                    if (sIdx < sessions.size && aiMsgIndex < sessions[sIdx].messages.size) {
+                        val updated = sessions[sIdx].messages.toMutableList()
+                        updated[aiMsgIndex] = updated[aiMsgIndex].copy(imageUrl = imageUrl)
+                        sessions[sIdx] = sessions[sIdx].copy(messages = updated)
+                        Log.d(TAG, "图片已生成并更新到消息")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "更新图片 URL 失败", e)
+                }
             }
             "生成的图片已展示。"
         }
-    } catch (e: Exception) { "绘图失败: ${e.message}" }
+    } catch (e: Exception) {
+        Log.e(TAG, "生图异常", e)
+        "绘图失败: ${e.message}"
+    }
 
     private fun executeBrowseUrlSync(url: String): String = try {
         val doc = Jsoup.connect(url).timeout(10000).get()
@@ -386,8 +541,22 @@ ${settings.userPersona}
     } catch (e: Exception) { "浏览失败: ${e.message}" }
 
     private fun executeJsCalculate(code: String): String {
-        val rhino = RhinoContext.enter().apply { optimizationLevel = -1 }
-        return try { RhinoContext.toString(rhino.evaluateString(rhino.initStandardObjects(), code, "JS", 1, null)) } finally { RhinoContext.exit() }
+        var rhinoContext: RhinoContext? = null
+        return try {
+            rhinoContext = RhinoContext.enter().apply { optimizationLevel = -1 }
+            val scope = rhinoContext.initStandardObjects()
+            val result = rhinoContext.evaluateString(scope, code, "JS", 1, null)
+            RhinoContext.toString(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "JS 计算异常: $code", e)
+            "计算错误: ${e.message}"
+        } finally {
+            try {
+                RhinoContext.exit()
+            } catch (e: Exception) {
+                Log.w(TAG, "Rhino 上下文退出异常", e)
+            }
+        }
     }
 
     private fun executeExaSearchSync(query: String): String = try {
@@ -421,50 +590,74 @@ ${settings.userPersona}
 
     private fun updateStep(sIdx: Int, msgIdx: Int, type: StepType, content: String, toolName: String? = null) {
         if (sIdx >= sessions.size) return
-        val msg = sessions[sIdx].messages[msgIdx]
+        val msg = sessions[sIdx].messages.getOrNull(msgIdx) ?: return
         val steps = msg.steps.toMutableList()
         val existingIdx = steps.indexOfLast { it.type == type && it.toolName == toolName && !it.isFinished }
-        if (existingIdx != -1) steps[existingIdx] = steps[existingIdx].copy(content = content)
-        else { steps.forEach { it.isFinished = true }; steps.add(ChatStep(type, content, toolName)) }
-        viewModelScope.launch(Dispatchers.Main) {
-            val updated = sessions[sIdx].messages.toMutableList()
-            updated[msgIdx] = msg.copy(steps = steps)
-            sessions[sIdx] = sessions[sIdx].copy(messages = updated)
+        if (existingIdx != -1) {
+            steps[existingIdx] = steps[existingIdx].copy(content = content)
+        } else {
+            steps.forEach { it.isFinished = true }
+            steps.add(ChatStep(type, content, toolName))
         }
+        updateMessage(sIdx) { it.copy(steps = steps) }
     }
 
     private fun updateMessageContent(sIdx: Int, msgIdx: Int, content: String) {
-        viewModelScope.launch(Dispatchers.Main) {
-            if (sIdx < sessions.size && msgIdx < sessions[sIdx].messages.size) {
-                val updated = sessions[sIdx].messages.toMutableList()
-                updated[msgIdx] = updated[msgIdx].copy(content = content)
-                sessions[sIdx] = sessions[sIdx].copy(messages = updated)
-            }
-        }
+        updateMessage(sIdx, msgIdx) { it.copy(content = content) }
     }
 
     private fun finalizeMessage(sIdx: Int, msgIdx: Int) {
+        updateMessage(sIdx, msgIdx) { msg ->
+            msg.steps.forEach { it.isFinished = true }
+            msg.copy(steps = msg.steps)
+        }
+    }
+
+    /**
+     * 通用消息更新方法
+     * 消除重复的消息更新模式
+     */
+    private fun updateMessage(
+        sIdx: Int,
+        msgIdx: Int? = null,
+        transform: (ChatMessage) -> ChatMessage
+    ) {
         viewModelScope.launch(Dispatchers.Main) {
-            if (sIdx < sessions.size && msgIdx < sessions[sIdx].messages.size) {
-                val msg = sessions[sIdx].messages[msgIdx]; msg.steps.forEach { it.isFinished = true }
-                val updated = sessions[sIdx].messages.toMutableList()
-                updated[msgIdx] = msg.copy(steps = msg.steps)
-                sessions[sIdx] = sessions[sIdx].copy(messages = updated)
+            if (sIdx >= sessions.size) return@launch
+
+            val session = sessions[sIdx]
+            val messages = if (msgIdx != null) {
+                val msg = session.messages.getOrNull(msgIdx) ?: return@launch
+                session.messages.toMutableList().apply {
+                    this[msgIdx] = transform(msg)
+                }
+            } else {
+                session.messages.map { transform(it) }
             }
+            sessions[sIdx] = session.copy(messages = messages)
         }
     }
 
     private fun saveImageToInternalStorage(context: Context, uri: Uri): String? {
+        var bitmap: Bitmap? = null
         return try {
-            val bitmap = BitmapFactory.decodeStream(context.contentResolver.openInputStream(uri)) ?: return null
+            bitmap = BitmapFactory.decodeStream(context.contentResolver.openInputStream(uri))
+            if (bitmap == null) {
+                Log.w(TAG, "图片解码失败: $uri")
+                return null
+            }
+
             val file = File(context.cacheDir, "img_${System.currentTimeMillis()}.jpg")
             FileOutputStream(file).use { out ->
                 bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)
             }
+            Log.d(TAG, "图片已保存: ${file.absolutePath}")
             file.absolutePath
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "保存图片失败: ${e.message}", e)
             null
+        } finally {
+            bitmap?.recycle()
         }
     }
 

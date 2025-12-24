@@ -3,6 +3,7 @@ package mumu.xsy.mumuchat
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -16,10 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import mumu.xsy.mumuchat.ui.theme.DarkBgBase
-
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.runtime.*
+import mumu.xsy.mumuchat.ui.components.MuMuLogo
 import mumu.xsy.mumuchat.ui.theme.DarkBgBase
 import mumu.xsy.mumuchat.ui.theme.LightBgBase
 
