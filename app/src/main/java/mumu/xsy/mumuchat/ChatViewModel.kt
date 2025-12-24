@@ -17,6 +17,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.*
@@ -445,36 +446,219 @@ ${settings.userPersona}
 
     private fun processAndContinue(sIdx: Int, aiMsgIndex: Int, calls: List<JsonObject>, toolHistory: MutableList<Pair<JsonObject, String>>) {
         viewModelScope.launch {
-            calls.forEach { call ->
-                val func = call.getAsJsonObject("function")
-                val result = withContext(Dispatchers.IO) { executeToolInternal(func.get("name").asString, func.get("arguments").asString, sIdx, aiMsgIndex) }
-                toolHistory.add(call to result)
+            // 验证会话有效性
+            if (!isSessionValid(sIdx, aiMsgIndex)) {
+                Log.w(TAG, "processAndContinue: 会话无效，跳过工具执行")
+                return@launch
             }
+
+            for (call in calls) {
+                try {
+                    val func = call.getAsJsonObject("function")
+                    val funcName = func.get("name")?.asString ?: continue
+                    val argsJson = func.get("arguments")?.asString ?: "{}"
+
+                    updateStep(sIdx, aiMsgIndex, StepType.TOOL_CALL, "执行中: $funcName", funcName)
+
+                    val result = withContext(Dispatchers.IO) {
+                        executeToolWithRetry(funcName, argsJson, sIdx, aiMsgIndex)
+                    }
+
+                    toolHistory.add(call to result)
+                    updateStep(sIdx, aiMsgIndex, StepType.TOOL_CALL, result, funcName)
+                } catch (e: Exception) {
+                    Log.e(TAG, "processAndContinue: 工具执行失败", e)
+                    toolHistory.add(call to "工具执行失败: ${e.message}")
+                }
+            }
+
+            // 继续下一轮
             executeMultiStepTurn(sIdx, aiMsgIndex, toolHistory)
         }
     }
 
-    private fun executeToolInternal(name: String, argsJson: String, sIdx: Int, aiMsgIndex: Int): String {
-        return try {
-            val args = gson.fromJson(argsJson, JsonObject::class.java)
-            when (name) {
-                "save_memory" -> { viewModelScope.launch(Dispatchers.Main) { addMemory(args.get("fact").asString) }; "已保存。" }
-                "get_memories" -> gson.toJson(settings.memories)
-                "delete_memory" -> { viewModelScope.launch(Dispatchers.Main) { deleteMemory(args.get("index").asInt) }; "指令已发。" }
-                "update_memory" -> { viewModelScope.launch(Dispatchers.Main) { updateMemory(args.get("index").asInt, args.get("text").asString) }; "指令已发。" }
-                "exa_search" -> executeExaSearchSync(args.get("query").asString)
-                "browse_url" -> executeBrowseUrlSync(args.get("url").asString)
-                "calculate" -> executeJsCalculate(args.get("code").asString)
-                "text_to_image" -> executeTextToImageSync(args.get("prompt").asString, sIdx, aiMsgIndex)
-                "get_news_board" -> executeGetNewsBoardSync(args.get("board").asString)
-                else -> "未知工具。"
+    /**
+     * 带重试的工具执行
+     */
+    private suspend fun executeToolWithRetry(name: String, argsJson: String, sIdx: Int, aiMsgIndex: Int, maxRetries: Int = 2): String {
+        repeat(maxRetries + 1) { attempt ->
+            try {
+                return@executeToolWithRetry executeToolInternal(name, argsJson, sIdx, aiMsgIndex)
+            } catch (e: Exception) {
+                Log.w(TAG, "工具执行尝试 $attempt 失败: $name", e)
+                if (attempt == maxRetries) {
+                    return@executeToolWithRetry "工具执行失败 (已重试 $maxRetries 次): ${e.message}"
+                }
+                delay(500) // 重试前等待
             }
-        } catch (e: Exception) { "错误: ${e.message}" }
+        }
+        return "工具执行失败: 未知错误"
+    }
+
+    /**
+     * 验证会话有效性
+     */
+    private fun isSessionValid(sIdx: Int, aiMsgIndex: Int): Boolean {
+        if (sIdx >= sessions.size) {
+            Log.w(TAG, "会话索引无效: sIdx=$sIdx, sessions.size=${sessions.size}")
+            return false
+        }
+        if (aiMsgIndex >= sessions[sIdx].messages.size) {
+            Log.w(TAG, "消息索引无效: aiMsgIndex=$aiMsgIndex, messages.size=${sessions[sIdx].messages.size}")
+            return false
+        }
+        return true
+    }
+
+    private fun executeToolInternal(name: String, argsJson: String, sIdx: Int, aiMsgIndex: Int): String {
+        // 验证参数
+        if (argsJson.isBlank()) {
+            Log.w(TAG, "工具参数为空: $name")
+            return "错误: 工具参数为空"
+        }
+
+        return try {
+            val args = try {
+                gson.fromJson(argsJson, JsonObject::class.java) ?: JsonObject()
+            } catch (e: Exception) {
+                Log.w(TAG, "解析工具参数失败: $argsJson", e)
+                JsonObject()
+            }
+
+            when (name) {
+                "save_memory" -> {
+                    val fact = args.get("fact")?.asString ?: ""
+                    if (fact.isBlank()) {
+                        "错误: memory 内容不能为空"
+                    } else {
+                        viewModelScope.launch(Dispatchers.Main) { addMemory(fact) }
+                        "已保存记忆: ${fact.take(50)}..."
+                    }
+                }
+                "get_memories" -> {
+                    val memories = settings.memories
+                    if (memories.isEmpty()) {
+                        "暂无记忆"
+                    } else {
+                        gson.toJson(memories)
+                    }
+                }
+                "delete_memory" -> {
+                    val index = args.get("index")?.asInt
+                    if (index == null || index < 0 || index >= settings.memories.size) {
+                        "错误: 无效的记忆索引 $index (共 ${settings.memories.size} 条)"
+                    } else {
+                        viewModelScope.launch(Dispatchers.Main) { deleteMemory(index) }
+                        "已删除第 ${index + 1} 条记忆"
+                    }
+                }
+                "update_memory" -> {
+                    val index = args.get("index")?.asInt
+                    val text = args.get("text")?.asString ?: ""
+                    if (index == null || index < 0 || index >= settings.memories.size) {
+                        "错误: 无效的记忆索引 $index"
+                    } else if (text.isBlank()) {
+                        "错误: 新内容不能为空"
+                    } else {
+                        viewModelScope.launch(Dispatchers.Main) { updateMemory(index, text) }
+                        "已更新记忆"
+                    }
+                }
+                "exa_search" -> {
+                    val query = args.get("query")?.asString ?: ""
+                    if (query.isBlank()) {
+                        "错误: 搜索关键词不能为空"
+                    } else if (settings.exaApiKey.isBlank()) {
+                        "错误: 未配置 Exa Search Key，请在设置中配置"
+                    } else {
+                        executeExaSearchSync(query)
+                    }
+                }
+                "browse_url" -> {
+                    val url = args.get("url")?.asString ?: ""
+                    if (url.isBlank()) {
+                        "错误: URL 不能为空"
+                    } else if (!isValidUrl(url)) {
+                        "错误: 无效的 URL 格式"
+                    } else {
+                        executeBrowseUrlSync(url)
+                    }
+                }
+                "calculate" -> {
+                    val code = args.get("code")?.asString ?: ""
+                    if (code.isBlank()) {
+                        "错误: 计算代码不能为空"
+                    } else {
+                        executeJsCalculate(code)
+                    }
+                }
+                "text_to_image" -> {
+                    val prompt = args.get("prompt")?.asString ?: ""
+                    if (prompt.isBlank()) {
+                        "错误: 图片描述不能为空"
+                    } else if (settings.apiKey.isBlank()) {
+                        "错误: 未配置 API Key"
+                    } else {
+                        executeTextToImageSync(prompt, sIdx, aiMsgIndex)
+                    }
+                }
+                "get_news_board" -> {
+                    val board = args.get("board")?.asString ?: ""
+                    if (board.isBlank()) {
+                        "错误: 热搜板块不能为空"
+                    } else {
+                        executeGetNewsBoardSync(board)
+                    }
+                }
+                else -> "未知工具: $name"
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "executeToolInternal 执行异常: $name", e)
+            "工具执行错误: ${e.message}"
+        }
+    }
+
+    /**
+     * 验证 URL 格式
+     */
+    private fun isValidUrl(url: String): Boolean {
+        return try {
+            val pattern = "^(https?://)?([\\w\\-]+\\.)+[\\w\\-]+(/[\\w\\-./?%&=]*)?$".toRegex()
+            pattern.matches(url)
+        } catch (e: Exception) {
+            false
+        }
     }
 
     private fun executeGetNewsBoardSync(board: String): String = try {
-        client.newCall(Request.Builder().url("https://60s.viki.moe/v2/$board").build()).execute().use { it.body?.string() ?: "空" }
-    } catch (e: Exception) { "失败: ${e.message}" }
+        val request = Request.Builder()
+            .url("https://60s.viki.moe/v2/$board")
+            .header("User-Agent", "MuMuChat/2.1")
+            .get()
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                Log.w(TAG, "获取热搜失败: HTTP ${response.code}")
+                return@use "获取热搜失败: HTTP ${response.code}"
+            }
+
+            val body = response.body?.string()
+            if (body.isNullOrBlank()) {
+                Log.w(TAG, "获取热搜失败: 空响应")
+                return@use "获取热搜失败: 空响应"
+            }
+
+            Log.d(TAG, "热搜获取成功: ${body.length} 字符")
+            body
+        }
+    } catch (e: java.net.SocketTimeoutException) {
+        Log.e(TAG, "获取热搜超时", e)
+        "获取热搜超时，请重试"
+    } catch (e: Exception) {
+        Log.e(TAG, "获取热搜异常", e)
+        "获取热搜失败: ${e.message}"
+    }
 
     private fun executeTextToImageSync(prompt: String, sIdx: Int, aiMsgIndex: Int): String = try {
         val requestBody = JsonObject().apply {
@@ -482,11 +666,14 @@ ${settings.userPersona}
             addProperty("prompt", prompt)
             addProperty("image_size", "1024x1024")
             addProperty("num_inference_steps", 4)
+            addProperty("width", 1024)
+            addProperty("height", 1024)
         }
 
         val request = Request.Builder()
             .url("${settings.baseUrl}/images/generations")
             .header("Authorization", "Bearer ${settings.apiKey}")
+            .header("Content-Type", "application/json")
             .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
             .build()
 
@@ -497,29 +684,40 @@ ${settings.userPersona}
             }
 
             val bodyString = response.body?.string()
-            if (bodyString.isNullOrEmpty()) {
-                Log.w(TAG, "生图失败: 响应体为空")
-                return@use "绘图失败: 响应体为空"
+            if (bodyString.isNullOrBlank()) {
+                Log.w(TAG, "生图失败: 空响应")
+                return@use "绘图失败: 空响应"
             }
 
-            val jsonObject = gson.fromJson(bodyString, JsonObject::class.java)
+            val jsonObject = try {
+                gson.fromJson(bodyString, JsonObject::class.java)
+            } catch (e: Exception) {
+                Log.e(TAG, "生图响应解析失败", e)
+                return@use "绘图失败: 响应解析错误"
+            }
+
             val images = jsonObject.getAsJsonArray("images")
             if (images == null || images.size() == 0) {
                 Log.w(TAG, "生图失败: 无 images 字段")
                 return@use "绘图失败: 无 images 字段"
             }
 
-            val imageUrl = images.get(0).asJsonObject.get("url")?.asString
+            val imageObj = images.get(0)?.asJsonObject
+            val imageUrl = imageObj?.get("url")?.asString ?: imageObj?.get("b64_json")?.asString
             if (imageUrl == null) {
-                Log.w(TAG, "生图失败: 无 url 字段")
-                return@use "绘图失败: 无 url 字段"
+                Log.w(TAG, "生图失败: 无 url/b64_json 字段")
+                return@use "绘图失败: 无图片数据"
             }
 
             viewModelScope.launch(Dispatchers.Main) {
                 try {
-                    if (sIdx < sessions.size && aiMsgIndex < sessions[sIdx].messages.size) {
+                    if (isSessionValid(sIdx, aiMsgIndex)) {
                         val updated = sessions[sIdx].messages.toMutableList()
-                        updated[aiMsgIndex] = updated[aiMsgIndex].copy(imageUrl = imageUrl)
+                        updated[aiMsgIndex] = updated[aiMsgIndex].copy(
+                            imageUrl = if (imageUrl.startsWith("data:")) {
+                                "data:image/png;base64,${imageUrl.substringAfter("base64,")}"
+                            } else imageUrl
+                        )
                         sessions[sIdx] = sessions[sIdx].copy(messages = updated)
                         Log.d(TAG, "图片已生成并更新到消息")
                     }
@@ -527,29 +725,78 @@ ${settings.userPersona}
                     Log.e(TAG, "更新图片 URL 失败", e)
                 }
             }
-            "生成的图片已展示。"
+            "图片已生成"
         }
+    } catch (e: java.net.SocketTimeoutException) {
+        Log.e(TAG, "生图超时", e)
+        "生图超时，请重试"
     } catch (e: Exception) {
         Log.e(TAG, "生图异常", e)
         "绘图失败: ${e.message}"
     }
 
     private fun executeBrowseUrlSync(url: String): String = try {
-        val doc = Jsoup.connect(url).timeout(10000).get()
-        val text = (doc.select("article").first() ?: doc.body()).text()
-        if (text.length > 8000) text.take(8000) + "..." else text
-    } catch (e: Exception) { "浏览失败: ${e.message}" }
+        val doc = Jsoup.connect(url)
+            .timeout(15000) // 15秒超时
+            .userAgent("Mozilla/5.0 (Android; MuMuChat/2.1)")
+            .followRedirects(true)
+            .maxBodySize(5 * 1024 * 1024) // 5MB 限制
+            .get()
+
+        val title = doc.title().takeIf { it.isNotBlank() } ?: "无标题"
+        val text = (doc.select("article").first() ?: doc.body() ?: doc).text()
+        val truncated = if (text.length > 10000) {
+            text.take(10000) + "\n\n[内容已截断]"
+        } else text
+
+        Log.d(TAG, "网页获取成功: $title, ${truncated.length} 字符")
+        "网页标题: $title\n\n$truncated"
+    } catch (e: java.net.SocketTimeoutException) {
+        Log.e(TAG, "网页加载超时: $url", e)
+        "网页加载超时，请检查网络或尝试其他 URL"
+    } catch (e: org.jsoup.HttpStatusException) {
+        Log.e(TAG, "网页请求失败: ${e.statusCode}", e)
+        "网页请求失败 (HTTP ${e.statusCode}): ${e.message}"
+    } catch (e: Exception) {
+        Log.e(TAG, "网页浏览异常: $url", e)
+        "浏览失败: ${e.message}"
+    }
 
     private fun executeJsCalculate(code: String): String {
         var rhinoContext: RhinoContext? = null
         return try {
-            rhinoContext = RhinoContext.enter().apply { optimizationLevel = -1 }
+            rhinoContext = RhinoContext.enter().apply {
+                optimizationLevel = -1
+            }
             val scope = rhinoContext.initStandardObjects()
-            val result = rhinoContext.evaluateString(scope, code, "JS", 1, null)
-            RhinoContext.toString(result)
+
+            // 限制执行时间和复杂度
+            val limitedCode = """
+                (function() {
+                    try {
+                        $code
+                    } catch (e) {
+                        return '错误: ' + e.message;
+                    }
+                })();
+            """.trimIndent()
+
+            val result = rhinoContext.evaluateString(scope, limitedCode, "JS", 1, null)
+            val output = RhinoContext.toString(result)
+
+            if (output.isNullOrBlank()) {
+                "计算完成 (无输出)"
+            } else {
+                output
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "JS 计算异常: $code", e)
-            "计算错误: ${e.message}"
+            Log.e(TAG, "JS 计算异常", e)
+            when {
+                e.message?.contains("ReferenceError") == true -> "ReferenceError: 变量未定义"
+                e.message?.contains("SyntaxError") == true -> "SyntaxError: 语法错误"
+                e.message?.contains("TypeError") == true -> "TypeError: 类型错误"
+                else -> "计算错误: ${e.message}"
+            }
         } finally {
             try {
                 RhinoContext.exit()
@@ -560,9 +807,82 @@ ${settings.userPersona}
     }
 
     private fun executeExaSearchSync(query: String): String = try {
-        val requestBody = JsonObject().apply { addProperty("query", query); addProperty("useAutoprompt", true); addProperty("numResults", 3); add("contents", JsonObject().apply { addProperty("text", true) }) }
-        client.newCall(Request.Builder().url("https://api.exa.ai/search").header("x-api-key", settings.exaApiKey).post(requestBody.toString().toRequestBody("application/json".toMediaType())).build()).execute().use { it.body?.string() ?: "空" }
-    } catch (e: Exception) { "搜索异常: ${e.message}" }
+        val requestBody = JsonObject().apply {
+            addProperty("query", query)
+            addProperty("useAutoprompt", true)
+            addProperty("numResults", 5)
+            addProperty("timeout", 10) // 10秒超时
+            add("contents", JsonObject().apply {
+                addProperty("text", true)
+                addProperty("summary", true)
+            })
+        }
+
+        val request = Request.Builder()
+            .url("https://api.exa.ai/search")
+            .header("x-api-key", settings.exaApiKey)
+            .header("Content-Type", "application/json")
+            .header("User-Agent", "MuMuChat/2.1")
+            .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                Log.w(TAG, "Exa 搜索失败: HTTP ${response.code}")
+                return@use when (response.code) {
+                    401 -> "搜索失败: API Key 无效"
+                    429 -> "搜索失败: 请求过于频繁，请稍后重试"
+                    else -> "搜索失败: HTTP ${response.code}"
+                }
+            }
+
+            val bodyString = response.body?.string()
+            if (bodyString.isNullOrBlank()) {
+                Log.w(TAG, "Exa 搜索空响应")
+                return@use "搜索失败: 空响应"
+            }
+
+            val jsonObject = try {
+                gson.fromJson(bodyString, JsonObject::class.java)
+            } catch (e: Exception) {
+                Log.e(TAG, "Exa 响应解析失败", e)
+                return@use "搜索失败: 响应解析错误"
+            }
+
+            val results = jsonObject.getAsJsonArray("results")
+            val resultsCount = results?.size() ?: 0
+            if (resultsCount == 0) {
+                Log.w(TAG, "Exa 搜索无结果")
+                return@use "未找到相关结果"
+            }
+
+            val sb = StringBuilder()
+            sb.appendLine("搜索结果 ($resultsCount 条):")
+            sb.appendLine()
+
+            results.forEachIndexed { index, result ->
+                val obj = result.asJsonObject
+                val title = obj.get("title")?.asString ?: "无标题"
+                val url = obj.get("url")?.asString ?: ""
+                val snippet = obj.get("description")?.asString ?: obj.get("text")?.asString ?: ""
+                val snippetClean = snippet.take(200).replace("\n", " ")
+
+                sb.appendLine("${index + 1}. $title")
+                sb.appendLine("   $snippetClean")
+                sb.appendLine("   来源: $url")
+                sb.appendLine()
+            }
+
+            Log.d(TAG, "Exa 搜索成功: $resultsCount 条结果")
+            sb.toString()
+        }
+    } catch (e: java.net.SocketTimeoutException) {
+        Log.e(TAG, "Exa 搜索超时", e)
+        "搜索超时，请重试"
+    } catch (e: Exception) {
+        Log.e(TAG, "Exa 搜索异常", e)
+        "搜索失败: ${e.message}"
+    }
 
     private fun getToolsDefinition() = JsonArray().apply {
         add(createTool("save_memory", "记录用户信息", mapOf("fact" to "string")))
