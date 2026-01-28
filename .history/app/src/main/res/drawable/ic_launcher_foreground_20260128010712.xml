@@ -1,0 +1,32 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- 纯白“木”字 - 极简书法风格 -->
+    <path
+        android:pathData="M54,28 L54,80"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="6"
+        android:strokeLineCap="butt" />
+    
+    <path
+        android:pathData="M28,45 L80,45"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="6"
+        android:strokeLineCap="butt" />
+    
+    <path
+        android:pathData="M54,45 C50,55 38,72 25,78"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="6"
+        android:strokeLineCap="butt" />
+    
+    <path
+        android:pathData="M54,45 C58,55 70,72 83,78"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="6"
+        android:strokeLineCap="butt" />
+
+</vector>

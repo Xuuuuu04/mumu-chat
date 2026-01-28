@@ -1,57 +1,57 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- 应用名称 -->
-    <string name="app_name">MuMuChat</string>
+    <string name="app_name">木灵</string>
 
     <!-- 侧边栏 -->
-    <string name="app_title">MuMu Chat</string>
-    <string name="app_subtitle">Super Agent v2.0</string>
-    <string name="new_chat">新对话</string>
-    <string name="folders">Folders</string>
-    <string name="settings_entry">模型与Key配置</string>
+    <string name="app_title">木灵</string>
+    <string name="app_subtitle">水墨版 v2.0</string>
+    <string name="new_chat">开启新篇章</string>
+    <string name="folders">归档分类</string>
+    <string name="settings_entry">灵犀设定</string>
 
     <!-- 会话操作 -->
-    <string name="rename_session">重命名会话</string>
-    <string name="save">保存</string>
-    <string name="delete">删除</string>
-    <string name="rename">重命名</string>
-    <string name="create_folder">新建文件夹</string>
-    <string name="folder_name">文件夹名称</string>
-    <string name="create">创建</string>
-    <string name="delete_folder">删除文件夹</string>
-    <string name="move_out_of_folder">移出文件夹</string>
+    <string name="rename_session">为对话题名</string>
+    <string name="save">定稿</string>
+    <string name="delete">抹除</string>
+    <string name="rename">题名</string>
+    <string name="create_folder">新建归档分类</string>
+    <string name="folder_name">分类名称</string>
+    <string name="create">建立</string>
+    <string name="delete_folder">删除分类</string>
+    <string name="move_out_of_folder">移出归档</string>
     <string name="move_to_folder">移至: %s</string>
 
     <!-- 消息气泡 -->
-    <string name="ai_sender">MuMu Intelligence</string>
-    <string name="preview_html">预览 HTML / 运行代码</string>
+    <string name="ai_sender">木灵助手</string>
+    <string name="preview_html">预览代码 / 运行</string>
 
     <!-- 任务链 -->
-    <string name="task_flow_running">任务链执行中</string>
-    <string name="thinking">思考中...</string>
-    <string name="action">Action: %s</string>
+    <string name="task_flow_running">推演与调用记录</string>
+    <string name="thinking">笔耕不辍，正在深度推演</string>
+    <string name="action">调用工具: %s</string>
 
     <!-- 输入栏 -->
-    <string name="input_hint">发个消息给 MuMu...</string>
+    <string name="input_hint">在此书写消息...</string>
     <string name="attach_image">图片</string>
     <string name="attach_document">文档</string>
 
     <!-- 设置对话框 -->
-    <string name="settings_title">模型与Key配置</string>
-    <string name="base_url">Base URL</string>
-    <string name="api_key">API Key</string>
-    <string name="exa_search_key">Exa Search Key</string>
-    <string name="model_management">模型管理</string>
-    <string name="add_model_manually">手动添加模型</string>
-    <string name="available_models">可用模型列表</string>
+    <string name="settings_title">灵犀设定</string>
+    <string name="base_url">服务地址 (Base URL)</string>
+    <string name="api_key">API 密钥 (API Key)</string>
+    <string name="exa_search_key">Exa 搜索密钥 (Exa Search Key)</string>
+    <string name="model_management">灵犀名录</string>
+    <string name="add_model_manually">录入新灵犀</string>
+    <string name="available_models">可用名录</string>
     <string name="fetch_updates">拉取更新</string>
-    <string name="new_models_found">发现新模型 (%d)</string>
+    <string name="new_models_found">发现新名录 (%d)</string>
     <string name="add_selected">添加选中 (%d)</string>
 
     <!-- 个性化对话框 -->
-    <string name="profile_title">AI 个性化与记忆</string>
-    <string name="persona_setting">个性化设定 / Persona</string>
-    <string name="persona_hint">例如：你是一个幽默的程序员...</string>
+    <string name="profile_title">心性设定</string>
+    <string name="persona_setting">设定 AI 角色心性 (Persona)</string>
+    <string name="persona_hint">描述 AI 的性格、语言风格等...</string>
     <string name="long_term_memory">长期记忆</string>
     <string name="no_memory">暂无记忆</string>
     <string name="add_memory">添加记忆...</string>

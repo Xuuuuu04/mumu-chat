@@ -1,0 +1,32 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- 纯白“木”字 - 还原开屏加载页面的 MuLingLogo 比例 -->
+    <path
+        android:pathData="M54,22 L54,86"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:strokeLineCap="square" />
+    
+    <path
+        android:pathData="M28,45 L80,45"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:strokeLineCap="square" />
+    
+    <path
+        android:pathData="M54,45 L28,78"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:strokeLineCap="square" />
+    
+    <path
+        android:pathData="M54,45 L80,78"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:strokeLineCap="square" />
+
+</vector>

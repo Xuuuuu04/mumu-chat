@@ -8,13 +8,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 private val DarkColorScheme = darkColorScheme(
-    primary = BrandPrimary,
-    onPrimary = Color.White,
+    primary = BrandPrimaryDark,
+    onPrimary = Color(0xFF1A1A1A), // 暗色模式主色按钮上的文字用深色
     background = DarkBgBase,
     surface = DarkSurface,
     onBackground = TextPrimaryDark,
     onSurface = TextPrimaryDark,
-    surfaceVariant = DarkBgGradientTop,
+    surfaceVariant = DarkSurface,
     onSurfaceVariant = TextSecondaryDark,
     secondary = BrandSecondary,
     tertiary = BrandAccent,
@@ -28,7 +28,7 @@ private val LightColorScheme = lightColorScheme(
     surface = LightSurface,
     onBackground = TextPrimaryLight,
     onSurface = TextPrimaryLight,
-    surfaceVariant = Color.White,
+    surfaceVariant = LightSurface,
     onSurfaceVariant = TextSecondaryLight,
     secondary = BrandSecondary,
     tertiary = BrandAccent,
@@ -36,7 +36,7 @@ private val LightColorScheme = lightColorScheme(
 )
 
 @Composable
-fun MuMuChatTheme(
+fun MuLingTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
