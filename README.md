@@ -217,3 +217,6 @@ MIT ライセンスの下で配布されています。詳細は `LICENSE` フ�
 
 ## 统一源码目录
 - 源码入口：[`src/`](./src)
+
+## 目录结构
+- 结构说明：[`docs/PROJECT_STRUCTURE.md`](./docs/PROJECT_STRUCTURE.md)
