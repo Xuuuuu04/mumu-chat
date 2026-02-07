@@ -206,6 +206,7 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ### 📄 ライセンス
 MIT ライセンスの下で配布されています。詳細は `LICENSE` ファイルをご覧ください。
+
 ## 开发进度（截至 2026-02-07）
-- 当前开发进度与已知风险：`docs/PROJECT_STATUS.md`
-- 本仓库以可公开协作为目标维护，功能清单与后续计划以状态文档为准并持续更新。
+- 已完成可公开仓库基线整理：补齐许可证、清理敏感与内部说明文件。
+- 当前版本可构建/可运行，后续迭代以 issue 与提交记录持续公开追踪。
