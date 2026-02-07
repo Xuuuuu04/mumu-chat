@@ -54,7 +54,7 @@
 #### 安装步骤
 1.  **克隆项目**:
     ```bash
-    git clone git@gitcode.com:mumu_xsy/mumuchat.git
+    git clone https://github.com/Xuuuuu04/mumu-chat.git
     ```
 2.  在 Android Studio 中打开项目。
 3.  同步 Gradle 并运行到您的设备或模拟器。
@@ -117,7 +117,7 @@
 #### Installation
 1.  **Clone the repository**:
     ```bash
-    git clone git@gitcode.com:mumu_xsy/mumuchat.git
+    git clone https://github.com/Xuuuuu04/mumu-chat.git
     ```
 2.  Open the project in Android Studio.
 3.  Sync Gradle and run on your device/emulator.
@@ -180,7 +180,7 @@ Distributed under the MIT License. See `LICENSE` for more information.
 #### インストール
 1.  **リポジトリをクローン**:
     ```bash
-    git clone git@gitcode.com:mumu_xsy/mumuchat.git
+    git clone https://github.com/Xuuuuu04/mumu-chat.git
     ```
 2.  Android Studio でプロジェクトを開きます。
 3.  Gradle を同期し、デバイスまたはエミュレータで実行します。
@@ -206,3 +206,6 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ### 📄 ライセンス
 MIT ライセンスの下で配布されています。詳細は `LICENSE` ファイルをご覧ください。
+## 开发进度（截至 2026-02-07）
+- 当前开发进度与已知风险：`docs/PROJECT_STATUS.md`
+- 本仓库以可公开协作为目标维护，功能清单与后续计划以状态文档为准并持续更新。
